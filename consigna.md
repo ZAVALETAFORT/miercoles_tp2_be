@@ -1,5 +1,7 @@
+
 # Clase 2 — Consigna de práctica
 
+Seguimos en la carpeta `biblioteca-api/` de la clase 1.
 
 ## Ejercicio 0 — Predecir el Event Loop
 
