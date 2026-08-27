@@ -1,4 +1,4 @@
-import { readFile } from "node:fs"
+const { readFile } = require("node:fs");
 // console.log("🚀 ~ readFile:", readFile)
 // console.log("🚀 ~ fs:", fs)
 
