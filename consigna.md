@@ -1,100 +1,113 @@
-# Clase 4 — Consigna de práctica
+# Clase 5 — Consigna de práctica
 
-Hoy damos el salto de Node puro (clase 3) a **Express**, construyendo una API REST con un **CRUD completo en memoria** — a propósito todo en un archivo, sin capas todavía.
+Seguimos en `biblioteca-api-express/` de la clase 4. Hoy la refactorizamos: sacamos todo de `index.js` y lo repartimos en `routes/`, `controllers/` y `middlewares/`. De paso, estandarizamos el formato de error y agregamos paginación y orden al listado.
 
-Es una carpeta nueva, aparte de `biblioteca-api/` de las clases 1-3. En la clase 5 este mismo CRUD se refactoriza a `routes/` y `controllers/`, entra el tema **middlewares**, y pasa a ser el proyecto integrador.
-
----
-
-## Ejercicio 1 — Setup e instalación de Express
-
-1. Crear una carpeta `biblioteca-api-express/`.
-2. Inicializar el proyecto: `npm init -y`.
-3. Instalar Express: `npm install express`.
-4. Configurar los scripts en `package.json`:
-   ```json
-   "scripts": {
-     "start": "node index.js",
-     "dev": "node --watch index.js"
-   }
-   ```
-5. **Inspeccionar el `package.json` generado** y responder en un archivo `NOTAS.md` (dos líneas):
-   - ¿Qué versión de Express se instaló?
-   - ¿Con qué símbolo quedó anotada (`^`, `~` o sin símbolo) y qué significa ese símbolo?
-
-   > Ojo: **el `package.json` es JSON y JSON no admite comentarios** — no metas `//` adentro o `npm install` va a fallar. Cuando la consigna dice "anotar en un comentario", es en un archivo `.md` o como comentario `//` en un archivo `.js`, nunca dentro de un `.json`.
-6. Crear un `.gitignore` con `node_modules/` adentro.
+**No cambia el comportamiento visible de la API** (salvo el formato de error y los nuevos query params). Es un refactor: las mismas 5 rutas tienen que seguir andando igual.
 
 ---
 
-## Ejercicio 2 — CRUD in-memory en un solo archivo (`index.js`)
+## Ejercicio 1 — Separar los datos
 
-Todo vive en `index.js` (a propósito, por ahora).
-
-### 2.1 — Setup de la app
-
-1. Importar `express`, crear la app (`const app = express()`).
-2. Agregar la línea `app.use(express.json())` para que los `POST`/`PUT` tengan `req.body`. (Qué es exactamente esto lo vemos en la clase 5 — por ahora es "la línea obligatoria para el body".)
-3. Definir un array `libros` en memoria con **mínimo 5 libros**, cada uno con: `id`, `isbn`, `titulo`, `autor`, `stock`.
-
-### 2.2 — Las 5 rutas del CRUD
-
-- **`GET /libros`** — devolver la lista completa con status `200`.
-  - **Filtro por query param**: si la URL trae `?autor=nombre` (ej: `/libros?autor=orwell`), devolver solo los libros cuyo autor contenga ese texto, sin importar mayúsculas/minúsculas.
-
-- **`GET /libros/:id`** — buscar el libro por `:id`.
-  - Si existe → `200` + el objeto.
-  - Si no existe → `404` + `{ "error": "Libro no encontrado" }`.
-
-- **`POST /libros`** — crear un libro con los datos de `req.body`.
-  - **Validación**: si falta `titulo` o `autor` → `400` + `{ "error": "El título y el autor son obligatorios" }`.
-  - Asignar un `id` autoincremental (`Math.max(...ids) + 1`, o `1` si el array está vacío).
-  - Agregar al array y responder `201` + el libro creado.
-
-- **`PUT /libros/:id`** — reemplazar un libro.
-  - Si no existe → `404`.
-  - Si existe → actualizar sus campos con lo que venga en `req.body`, **manteniendo el `id` original**, y responder `200` + el libro actualizado.
-
-- **`DELETE /libros/:id`** — borrar un libro.
-  - Si no existe → `404`.
-  - Si existe → sacarlo del array y responder `200` + `{ "mensaje": "Libro eliminado correctamente" }`.
-
-### 2.3 — Levantar el servidor
-
-Escuchar en el puerto `3000` con `app.listen(3000, ...)` y loguear la URL al arrancar.
-
-**Cuidá dos cosas** que vimos en la teoría:
-- Después de responder dentro de un `if` (ej: el `404`), cortá el flujo con `return`.
-- El orden de las rutas: `/libros/:id` no puede taparle el paso a otra ruta más específica.
+1. Crear `data/libros.js` que exporte el array de libros (mínimo 5, con `id`, `isbn`, `titulo`, `autor`, `stock`).
+2. En vez de `let libros = [...]` adentro de `index.js`, ahora se importa desde ahí.
 
 ---
 
-## Ejercicio 3 — Pruebas con REST Client (`pruebas.http`)
+## Ejercicio 2 — `controllers/librosController.js`
 
-Crear `pruebas.http` en la raíz del proyecto, con al menos estas requests:
+Mover la lógica de cada endpoint a funciones sueltas en este archivo. Una función por operación: `listar`, `obtener`, `crear`, `actualizar`, `eliminar`. Cada una recibe `(req, res)`.
 
-1. `GET /libros` — listar todos.
-2. `GET /libros?autor=Orwell` — filtro por autor.
-3. `GET /libros/1` (existe → 200) y `GET /libros/999` (no existe → 404).
-4. `POST /libros` con body válido (→ 201) y `POST /libros` sin `titulo` (→ 400).
-5. `PUT /libros/1` — actualizar un libro.
-6. `DELETE /libros/2` — borrar un libro.
-7. `GET /libros` final — para ver cómo quedó la lista.
+Exportarlas todas: `module.exports = { listar, obtener, crear, actualizar, eliminar }`.
 
-Al reiniciar el servidor (o al guardar, si usás `npm run dev`), la lista vuelve al estado inicial: es esperable, los datos viven solo en memoria.
+### Formato de error estandarizado
+
+Todos los errores que devuelva la API tienen que tener **esta forma**:
+
+```json
+{ "error": { "code": "CODIGO_ESTABLE", "message": "texto para humanos" } }
+```
+
+Aplicarlo en:
+- `obtener` / `actualizar` / `eliminar` cuando el `:id` no existe → `404` + `code: "LIBRO_NO_ENCONTRADO"`.
+- `crear` cuando falta `titulo` o `autor` → `400` + `code: "DATOS_INCOMPLETOS"`.
+
+### Paginación y orden en `listar`
+
+`GET /libros` ahora soporta estos query params (además del `?autor=` de la clase 4):
+
+- `?page=2&limit=10` — devolver solo esa página. Defaults: `page=1`, `limit=20`.
+- `?sort=titulo` — ordenar ascendente por ese campo. `?sort=-stock` — descendente (el `-` adelante).
+
+Recordá que todo lo de `req.query` llega como **string** — hay que convertir con `Number(...)`.
+
+---
+
+## Ejercicio 3 — `routes/librosRoutes.js`
+
+Crear el router con `express.Router()`. Solo mapea ruta → función del controller, nada de lógica acá:
+
+```js
+router.get("/", controller.listar);
+router.get("/:id", controller.obtener);
+// ...
+```
+
+Las rutas van sin el prefijo `/libros` (eso lo agrega `index.js` al montar el router).
+
+---
+
+## Ejercicio 4 — `middlewares/`
+
+Ahora que sabés qué es un middleware, escribí dos:
+
+1. **`middlewares/logger.js`** — `(req, res, next)` que loguea `método + url + timestamp` de cada request y llama a `next()`.
+2. **`middlewares/notFound.js`** — `(req, res)` que responde `404` + `{ error: { code: "RUTA_NO_ENCONTRADA", message: "..." } }`. Se monta **después** de todos los routers, para atrapar cualquier ruta que no matcheó.
+
+---
+
+## Ejercicio 5 — `index.js` mínimo
+
+Tiene que quedar corto. Solo:
+1. Crear la app.
+2. `app.use(logger)` y `app.use(express.json())` — en ese orden.
+3. `app.use("/libros", librosRoutes)`.
+4. `app.use(notFound)` al final.
+5. `app.listen(3000, ...)`.
+
+Si `index.js` tiene un `libros.find(...)` o un `res.status(...)` adentro, algo quedó sin mover.
+
+---
+
+## Ejercicio 6 — Probar que nada se rompió
+
+Actualizar `pruebas.http` con:
+- Las mismas requests de la clase 4 (tienen que seguir dando lo mismo).
+- `GET /libros?page=1&limit=2` — verificar que devuelve solo 2.
+- `GET /libros?sort=-stock` — verificar el orden.
+- `GET /cualquier-cosa` — verificar el `404` estandarizado del `notFound`.
+- Un error viejo (ej: `GET /libros/999`) — verificar que ahora tiene el formato `{ error: { code, message } }`.
 
 ---
 
 ## Entregable
 
-Carpeta `biblioteca-api-express/` con:
-- `package.json` (con los scripts `start` y `dev`) y `.gitignore`
-- `index.js` — app + las 5 rutas del CRUD
-- `pruebas.http` — corriendo sin errores
-- `NOTAS.md` — con las respuestas del Ejercicio 1.5
+`biblioteca-api-express/` con esta estructura, las 5 rutas andando igual que en la clase 4, el formato de error unificado, y `index.js` sin lógica de negocio:
+
+```
+biblioteca-api-express/
+├── index.js
+├── package.json
+├── data/libros.js
+├── routes/librosRoutes.js
+├── controllers/librosController.js
+├── middlewares/logger.js
+├── middlewares/notFound.js
+└── pruebas.http
+```
 
 ---
 
 ## Desafío opcional
 
-- Agregar `PATCH /libros/:id` que actualice **solo** los campos enviados (a diferencia de `PUT`), y anotar en `NOTAS.md` por qué `PATCH` no es idempotente y `PUT` sí.
+- Agregar un segundo recurso: `routes/autoresRoutes.js` + `controllers/autoresController.js`, con `GET /autores` y `GET /autores/:id`, montado en `index.js` con `app.use("/autores", autoresRoutes)`. Ver lo poco que hay que tocar cuando la estructura ya está.
+- En `listar`, devolver la paginación con metadata: `{ page, limit, total, data: [...] }` en vez del array pelado.
