@@ -1,113 +1,118 @@
-# Clase 5 — Consigna de práctica
+# Clase 6 — Consigna de práctica
 
-Seguimos en `biblioteca-api-express/` de la clase 4. Hoy la refactorizamos: sacamos todo de `index.js` y lo repartimos en `routes/`, `controllers/` y `middlewares/`. De paso, estandarizamos el formato de error y agregamos paginación y orden al listado.
+Seguimos en `biblioteca-api-express/` de la clase 5. Hoy:
 
-**No cambia el comportamiento visible de la API** (salvo el formato de error y los nuevos query params). Es un refactor: las mismas 5 rutas tienen que seguir andando igual.
+1. Metemos un **error handler central** y sacamos todos los `res.status(4xx)...` de los controllers.
+2. Agregamos **validación con Zod** vía un middleware reutilizable.
 
----
-
-## Ejercicio 1 — Separar los datos
-
-1. Crear `data/libros.js` que exporte el array de libros (mínimo 5, con `id`, `isbn`, `titulo`, `autor`, `stock`).
-2. En vez de `let libros = [...]` adentro de `index.js`, ahora se importa desde ahí.
+El formato de error de la respuesta no cambia (`{ error: { code, message } }`) — cambia **quién lo arma**: ahora un solo lugar.
 
 ---
 
-## Ejercicio 2 — `controllers/librosController.js`
+## Ejercicio 1 — `AppError`
 
-Mover la lógica de cada endpoint a funciones sueltas en este archivo. Una función por operación: `listar`, `obtener`, `crear`, `actualizar`, `eliminar`. Cada una recibe `(req, res)`.
-
-Exportarlas todas: `module.exports = { listar, obtener, crear, actualizar, eliminar }`.
-
-### Formato de error estandarizado
-
-Todos los errores que devuelva la API tienen que tener **esta forma**:
-
-```json
-{ "error": { "code": "CODIGO_ESTABLE", "message": "texto para humanos" } }
-```
-
-Aplicarlo en:
-- `obtener` / `actualizar` / `eliminar` cuando el `:id` no existe → `404` + `code: "LIBRO_NO_ENCONTRADO"`.
-- `crear` cuando falta `titulo` o `autor` → `400` + `code: "DATOS_INCOMPLETOS"`.
-
-### Paginación y orden en `listar`
-
-`GET /libros` ahora soporta estos query params (además del `?autor=` de la clase 4):
-
-- `?page=2&limit=10` — devolver solo esa página. Defaults: `page=1`, `limit=20`.
-- `?sort=titulo` — ordenar ascendente por ese campo. `?sort=-stock` — descendente (el `-` adelante).
-
-Recordá que todo lo de `req.query` llega como **string** — hay que convertir con `Number(...)`.
-
----
-
-## Ejercicio 3 — `routes/librosRoutes.js`
-
-Crear el router con `express.Router()`. Solo mapea ruta → función del controller, nada de lógica acá:
+Crear `errors/AppError.js`: una clase que extienda `Error` y guarde `code`, `statusCode` (default `400`) y `details` (opcional).
 
 ```js
-router.get("/", controller.listar);
-router.get("/:id", controller.obtener);
-// ...
+class AppError extends Error {
+  constructor(code, message, statusCode = 400, details = undefined) {
+    super(message);
+    this.name = "AppError";
+    this.code = code;
+    this.statusCode = statusCode;
+    this.details = details;
+  }
+}
+export default AppError;
 ```
 
-Las rutas van sin el prefijo `/libros` (eso lo agrega `index.js` al montar el router).
+---
+
+## Ejercicio 2 — `middlewares/errorHandler.js`
+
+Un middleware de **4 parámetros** `(err, req, res, next)` que:
+
+- Si `err instanceof AppError` → responde `err.statusCode` + `{ error: { code, message, details? } }` (incluir `details` solo si existe).
+- Si es cualquier otro error → `console.error(err)` completo y responde `500` + `{ error: { code: "ERROR_INTERNO", message: "Ocurrió un error inesperado" } }`.
 
 ---
 
-## Ejercicio 4 — `middlewares/`
+## Ejercicio 3 — Refactorizar los controllers
 
-Ahora que sabés qué es un middleware, escribí dos:
+En `librosController.js`:
 
-1. **`middlewares/logger.js`** — `(req, res, next)` que loguea `método + url + timestamp` de cada request y llama a `next()`.
-2. **`middlewares/notFound.js`** — `(req, res)` que responde `404` + `{ error: { code: "RUTA_NO_ENCONTRADA", message: "..." } }`. Se monta **después** de todos los routers, para atrapar cualquier ruta que no matcheó.
+- Borrar el helper `error(...)` de la clase 5.
+- Donde antes hacías `return error(res, 404, ...)`, ahora `return next(new AppError("LIBRO_NO_ENCONTRADO", "No existe un libro con id X", 404))`.
+- Las funciones ahora reciben `(req, res, next)` (agregar el `next`).
+- Sacar la validación a mano del `crear` (el `if (!titulo || !autor)`) — eso pasa a Zod (ejercicio 4).
 
----
-
-## Ejercicio 5 — `index.js` mínimo
-
-Tiene que quedar corto. Solo:
-1. Crear la app.
-2. `app.use(logger)` y `app.use(express.json())` — en ese orden.
-3. `app.use("/libros", librosRoutes)`.
-4. `app.use(notFound)` al final.
-5. `app.listen(3000, ...)`.
-
-Si `index.js` tiene un `libros.find(...)` o un `res.status(...)` adentro, algo quedó sin mover.
+`notFound.js` puede quedar como está, o también tirar un `AppError` — a elección.
 
 ---
 
-## Ejercicio 6 — Probar que nada se rompió
+## Ejercicio 4 — Validación con Zod
 
-Actualizar `pruebas.http` con:
-- Las mismas requests de la clase 4 (tienen que seguir dando lo mismo).
-- `GET /libros?page=1&limit=2` — verificar que devuelve solo 2.
-- `GET /libros?sort=-stock` — verificar el orden.
-- `GET /cualquier-cosa` — verificar el `404` estandarizado del `notFound`.
-- Un error viejo (ej: `GET /libros/999`) — verificar que ahora tiene el formato `{ error: { code, message } }`.
+1. Instalar: `npm install zod`.
+2. Crear `schemas/libroSchema.js` con dos schemas:
+   - **`crearLibroSchema`**: `titulo` (string, min 1, obligatorio), `autor` (string, min 1, obligatorio), `isbn` (string, opcional), `stock` (número entero, no negativo, default `0`). Poner mensajes propios en español.
+   - **`actualizarLibroSchema`**: los mismos campos pero **todos opcionales** (es un update, puede venir solo `stock`), y `stock` **sin** el `.default(0)` — si el update no trae `stock`, no queremos pisarlo con 0.
+   - Pista: definí cada campo una vez en un objeto y reusá esas piezas en los dos schemas (`campos.titulo`, `campos.titulo.optional()`, etc.). Evitá `crearLibroSchema.partial()` acá, porque el `.default(0)` de `stock` se aplicaría igual en el update.
+3. Crear `middlewares/validate.js`: una **factory** `validate(schema)` que devuelve un middleware. Hace `schema.safeParse(req.body)`; si falla, arma un array `details` con `{ campo, mensaje }` por cada `issue` y llama a `next(new AppError("VALIDACION", "Datos inválidos", 400, details))`; si pasa, hace `req.body = resultado.data` y `next()`.
+4. En `routes/librosRoutes.js`, enchufar la validación antes del controller:
+   ```js
+   router.post("/", validate(crearLibroSchema), controller.crear);
+   router.put("/:id", validate(actualizarLibroSchema), controller.actualizar);
+   ```
+
+---
+
+## Ejercicio 5 — Conectar el error handler
+
+En `index.js`, `app.use(errorHandler)` va **al final de todo**, después de `notFound`.
+
+Verificar que `index.js` sigue sin lógica de negocio: solo `app.use(...)` y `app.listen(...)`.
+
+---
+
+## Ejercicio 6 — Probar
+
+En `pruebas.http`:
+
+1. `POST /libros` con `{ "autor": "" }` → `400` con `details` listando `titulo` y `autor`.
+2. `POST /libros` con `{ "titulo": "X", "autor": "Y", "stock": -3 }` → `400`, `details` sobre `stock`.
+3. `POST /libros` con `{ "titulo": "X", "autor": "Y", "stock": "cinco" }` → `400` (tipo incorrecto).
+4. `POST /libros` válido → `201`, y verificar que `stock` quedó en `0` cuando no se manda (default de Zod).
+5. `GET /libros/999` → `404` con el formato de siempre, pero ahora armado por el `errorHandler`.
+6. `PUT /libros/1` con solo `{ "stock": 5 }` → `200`, y el `titulo` original intacto (todos los campos son opcionales en `actualizarLibroSchema`).
+7. Provocar un error inesperado a propósito (ej: en un controller, una línea `JSON.parse("{")` temporal) y ver que responde `500` genérico y loguea el stack completo en consola. Después sacar esa línea.
 
 ---
 
 ## Entregable
 
-`biblioteca-api-express/` con esta estructura, las 5 rutas andando igual que en la clase 4, el formato de error unificado, y `index.js` sin lógica de negocio:
-
 ```
 biblioteca-api-express/
 ├── index.js
-├── package.json
+├── package.json          # ahora con "zod" en dependencies
 ├── data/libros.js
+├── errors/AppError.js
+├── schemas/libroSchema.js
 ├── routes/librosRoutes.js
 ├── controllers/librosController.js
-├── middlewares/logger.js
-├── middlewares/notFound.js
+├── middlewares/
+│   ├── logger.js
+│   ├── validate.js
+│   ├── notFound.js
+│   └── errorHandler.js
 └── pruebas.http
 ```
+
+Las 5 rutas andando, validación de Zod en `POST`/`PUT`, y **cero** `res.status(4xx)` o `res.status(500)` fuera de `errorHandler.js`.
 
 ---
 
 ## Desafío opcional
 
-- Agregar un segundo recurso: `routes/autoresRoutes.js` + `controllers/autoresController.js`, con `GET /autores` y `GET /autores/:id`, montado en `index.js` con `app.use("/autores", autoresRoutes)`. Ver lo poco que hay que tocar cuando la estructura ya está.
-- En `listar`, devolver la paginación con metadata: `{ page, limit, total, data: [...] }` en vez del array pelado.
+- Crear `paginacionSchema` con `z.coerce.number()` para `page` y `limit`, y un `validate` que valide `req.query` (ojo: en Express 5 `req.query` es de solo lectura — guardá el resultado en `req.paginacion` y leelo desde el controller).
+- Agregar a `crearLibroSchema` una regla de `isbn`: si viene, tiene que tener exactamente 13 dígitos (`z.string().regex(/^\d{13}$/, "El ISBN debe tener 13 dígitos")`).
+- Hacer que un `isbn` repetido al crear devuelva `409 Conflict` con `code: "ISBN_DUPLICADO"` (esto es lógica de negocio, va en el controller como `throw new AppError(...)`).

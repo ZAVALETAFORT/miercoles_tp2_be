@@ -1,4 +1,6 @@
 import books from "../data/books.js";
+import AppError from "../errors/AppError.js";
+import {createBookSchema} from "../schemas/bookSchemas.js";
 
 // Helper para no repetir la forma del error en cada lado.
 function error(res, status, code, message) {
@@ -34,17 +36,47 @@ function listar(req, res) {
 }
 
 // GET /books/:id
-function obtener(req, res) {
-  const id = Number(req.params.id);
-  const libro = books.find((l) => l.id === id);
-  if (!libro) {
-    return error(res, 404, "BOOK_NOT_FOUND", `No book exists with id ${req.params.id}`);
-  }
-  res.status(200).json(libro);
+// function obtener(req, res) {
+//   const id = Number(req.params.id);
+//   const libro = books.find((l) => l.id === id);
+//   if (!libro) {
+//     return error(res, 404, "BOOK_NOT_FOUND", `No book exists with id ${req.params.id}`);
+//   }
+//   res.status(200).json(libro);
+// }
+
+// function obtener(req, res, next) {
+//   const id = Number(req.params.id);
+//   const libro = books.find((l) => l.id === id);
+//   if (!libro) {
+//     return next(new Error(`No book exists with id ${req.params.id}`));
+//   }
+//   res.status(200).json(libro);
+// }
+// function obtener(req, res) {
+//   const id = Number(req.params.id);
+//   const libro = books.find((l) => l.id === id);
+//   if (!libro) {
+//     throw new Error(`No book exists with id ${req.params.id} con throw`)
+//   }
+//   res.status(200).json(libro);
+// }
+
+//  async function obtener (req, res) {
+//   const id = Number(req.params.id);
+//  const libro= await books.find()
+//   res.status(200).json(libro);
+// }
+
+function obtener (req, res, next) {
+return  next(new AppError(404, "BOOK_NOT_FOUND", `No book exists with id ${req.params.id}`));
 }
+
 
 // POST /books
 function crear(req, res) {
+  const validationResult = createBookSchema.parse(req.body);
+  console.log(`🚀 ~ crear ~ validationResult:`, validationResult)
   const { titulo, autor, isbn, stock } = req.body;
   if (!titulo || !autor) {
     return error(res, 400, "MISSING_DATA", "Title and author are required");

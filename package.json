@@ -1,26 +1,22 @@
 {
-  "name": "miercoles_tp2_be",
+  "name": "biblioteca-api-express",
   "version": "1.0.0",
-  "description": "",
+  "description": "API REST de Biblioteca — refactor a routes/ y controllers/ (Clase 5)",
+  "type": "module",
   "main": "index.js",
   "scripts": {
-    "start": "node .",
-    "dev": "node --watch .",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node index.js",
+    "dev": "node --watch index.js"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https:/@github.com/osvaldoojeda-ort/miercoles_tp2_be.git"
-  },
-  "keywords": [],
+  "keywords": [
+    "express",
+    "rest-api",
+    "node"
+  ],
   "author": "",
   "license": "ISC",
-  "type": "module",
-  "bugs": {
-    "url": "https://github.com/osvaldoojeda-ort/miercoles_tp2_be/issues"
-  },
-  "homepage": "https://github.com/osvaldoojeda-ort/miercoles_tp2_be#readme",
   "dependencies": {
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "zod": "^4.6.5"
   }
 }
