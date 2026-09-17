@@ -407,6 +407,28 @@ paginacionSchema.safeParse({});
 
 > **Ojo con Express 5**: `req.query` pasó a ser de **solo lectura** — no podés hacer `req.query = resultado.data`. Guardá el resultado en otra propiedad (`req.paginacion = resultado.data`) o leelo directo en el controller. `req.body` sí se puede reasignar.
 
+### 3.9 Lo que Zod NO valida: inyección SQL y XSS
+
+Zod valida **la forma** de los datos (tipo, longitud, si es obligatorio) — no si el contenido es peligroso para lo que hagas con él después. Son dos problemas distintos y conviene no confundirlos.
+
+```js
+crearLibroSchema.safeParse({
+  titulo: "'; DROP TABLE libros; --",
+  autor: "Ana",
+  stock: 3,
+});
+// { success: true, ... }  <- ¡pasa perfecto! Es un string válido de más de 1 carácter.
+```
+
+Zod no tiene forma de saber que ese `titulo` va a terminar pegado dentro de una consulta SQL armada a mano más adelante. El problema de la inyección no está en la forma del dato, está en **cómo se usa ese string después**:
+
+- **SQL injection** se evita en la capa que arma la query — con **queries parametrizadas** (`$1`, `?`) o un ORM/query builder (Prisma, Sequelize, Knex), nunca concatenando strings. Ahí el string se guarda tal cual, como dato inofensivo, sin importar qué caracteres tenga. Esto lo vemos en las clases de la capa de DAO/base de datos.
+- **XSS** se evita al **renderizar** (escapando el HTML donde se muestra ese dato), no al validar la entrada.
+
+> **¿Y bloquear caracteres especiales con una regex en el schema, como defensa?** No es un buen camino: 1) rompe datos legítimos (`O'Brien`, títulos con guiones o tildes), y 2) es una lista negra siempre incompleta — un ataque de SQL injection no necesita comillas ni `;` para funcionar. Un regex en Zod tiene sentido para reglas de **negocio** del dato (ej: `isbn` con exactamente 13 dígitos), no como filtro anti-inyección.
+
+Donde sí ayuda Zod, aunque sea de rebote: por default `z.object({...})` **descarta cualquier clave que no esté declarada en el schema**. Si a `crearLibroSchema` (que solo tiene `titulo`, `autor`, `isbn`, `stock`) le mandan `{ titulo: "X", autor: "Y", isAdmin: true }`, el `isAdmin` desaparece de `resultado.data` — nunca llega al controller. Eso sí es protección real contra "mass assignment" (que se cuele un campo que el cliente no debería poder tocar), pero es un beneficio distinto de la inyección SQL, y no la reemplaza.
+
 ## 4. Middleware de validación reutilizable
 
 ### 4.1 El middleware `validate`
