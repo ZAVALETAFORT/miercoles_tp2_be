@@ -1,11 +1,8 @@
-// Mounted after all routers: if it gets here, no route matched.
-function notFound(req, res) {
-  res.status(404).json({
-    error: {
-      code: "ROUTE_NOT_FOUND",
-      message: `Route ${req.method} ${req.originalUrl} does not exist`,
-    },
-  });
+import AppError from "../errors/AppError.js";
+
+// Se ejecuta si ninguna ruta matcheó: deriva un AppError 404 al errorHandler
+function notFound(req, res, next) {
+  next(new AppError("ROUTE_NOT_FOUND", `Route ${req.method} ${req.originalUrl} does not exist`, 404));
 }
 
 export default notFound;

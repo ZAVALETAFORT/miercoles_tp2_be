@@ -1,122 +1,105 @@
 import books from "../data/books.js";
 import AppError from "../errors/AppError.js";
-import {createBookSchema} from "../schemas/bookSchemas.js";
 
-// Helper para no repetir la forma del error en cada lado.
-function error(res, status, code, message) {
-  return res.status(status).json({ error: { code, message } });
-}
+const getBookTitle = (book) => book.titulo ?? book.title ?? "";
+const getBookAuthor = (book) => book.autor ?? book.author ?? "";
+const getValueByField = (book, field) => {
+  if (field === "title" || field === "titulo") return getBookTitle(book);
+  if (field === "author" || field === "autor") return getBookAuthor(book);
+  return book[field] ?? "";
+};
 
-// GET /books  — lista, con filtro (?autor=), orden (?sort=) y paginado (?page=&limit=)
-function listar(req, res) {
-  const { autor, sort } = req.query;
-  let resultado = [...books];
+const bookNotFound = (id) =>
+  new AppError("BOOK_NOT_FOUND", `No book exists with id ${id}`, 404);
 
-  if (autor) {
-    const termino = autor.toLowerCase();
-    resultado = resultado.filter((l) => l.autor.toLowerCase().includes(termino));
+// GET /books — filtro (?author=), orden (?sort=) y paginado (?page=&limit=)
+function list(req, res, next) {
+  const { author, autor, sort } = req.query;
+  let result = [...books];
+
+  const term = (author ?? autor ?? "").toString().toLowerCase();
+  if (term) {
+    result = result.filter((b) => getBookAuthor(b).toLowerCase().includes(term));
   }
 
   if (sort) {
-    const desc = sort.startsWith("-");
-    const campo = desc ? sort.slice(1) : sort;
-    resultado.sort((a, b) => {
-      if (a[campo] < b[campo]) return desc ? 1 : -1;
-      if (a[campo] > b[campo]) return desc ? -1 : 1;
+    const desc = sort.toString().startsWith("-");
+    const field = desc ? sort.toString().slice(1) : sort.toString();
+    result.sort((a, b) => {
+      const left = getValueByField(a, field);
+      const right = getValueByField(b, field);
+      if (left < right) return desc ? 1 : -1;
+      if (left > right) return desc ? -1 : 1;
       return 0;
     });
   }
 
-  const page = Number(req.query.page) || 1;
-  const limit = Number(req.query.limit) || 20;
-  const desde = (page - 1) * limit;
-  resultado = resultado.slice(desde, desde + limit);
+  const { page, limit } = req.pagination;
+  const from = (page - 1) * limit;
+  result = result.slice(from, from + limit);
 
-  res.status(200).json(resultado);
+  res.status(200).json(result);
 }
 
 // GET /books/:id
-// function obtener(req, res) {
-//   const id = Number(req.params.id);
-//   const libro = books.find((l) => l.id === id);
-//   if (!libro) {
-//     return error(res, 404, "BOOK_NOT_FOUND", `No book exists with id ${req.params.id}`);
-//   }
-//   res.status(200).json(libro);
-// }
-
-// function obtener(req, res, next) {
-//   const id = Number(req.params.id);
-//   const libro = books.find((l) => l.id === id);
-//   if (!libro) {
-//     return next(new Error(`No book exists with id ${req.params.id}`));
-//   }
-//   res.status(200).json(libro);
-// }
-// function obtener(req, res) {
-//   const id = Number(req.params.id);
-//   const libro = books.find((l) => l.id === id);
-//   if (!libro) {
-//     throw new Error(`No book exists with id ${req.params.id} con throw`)
-//   }
-//   res.status(200).json(libro);
-// }
-
-//  async function obtener (req, res) {
-//   const id = Number(req.params.id);
-//  const libro= await books.find()
-//   res.status(200).json(libro);
-// }
-
-function obtener (req, res, next) {
-return  next(new AppError(404, "BOOK_NOT_FOUND", `No book exists with id ${req.params.id}`));
+function get(req, res, next) {
+  const book = books.find((b) => b.id === Number(req.params.id));
+  if (!book) return next(bookNotFound(req.params.id));
+  res.status(200).json(book);
 }
 
+// POST /books — req.body ya validado por validate(createBookSchema)
+function create(req, res, next) {
+  const title = req.body.title ?? req.body.titulo;
+  const author = req.body.author ?? req.body.autor;
+  const { isbn, stock } = req.body;
 
-// POST /books
-function crear(req, res) {
-  const validationResult = createBookSchema.parse(req.body);
-  console.log(`🚀 ~ crear ~ validationResult:`, validationResult)
-  const { titulo, autor, isbn, stock } = req.body;
-  if (!titulo || !autor) {
-    return error(res, 400, "MISSING_DATA", "Title and author are required");
+  if (isbn && books.some((b) => b.isbn === isbn)) {
+    return next(new AppError("ISBN_DUPLICATE", `A book with ISBN ${isbn} already exists`, 409));
   }
 
-  const ids = books.map((l) => l.id);
-  const nuevoLibro = {
+  const ids = books.map((b) => b.id);
+  const newBook = {
     id: ids.length > 0 ? Math.max(...ids) + 1 : 1,
     isbn: isbn ?? "No ISBN",
-    titulo,
-    autor,
-    stock: stock ?? 0,
+    titulo: title,
+    autor: author,
+    stock,
   };
 
-  books.push(nuevoLibro);
-  res.status(201).json(nuevoLibro);
+  books.push(newBook);
+  res.status(201).json(newBook);
 }
 
-// PUT /books/:id
-function actualizar(req, res) {
-  const id = Number(req.params.id);
-  const index = books.findIndex((l) => l.id === id);
-  if (index === -1) {
-    return error(res, 404, "BOOK_NOT_FOUND", `No book exists with id ${req.params.id}`);
+// PUT /books/:id — req.body ya validado por validate(updateBookSchema)
+function update(req, res, next) {
+  const index = books.findIndex((b) => b.id === Number(req.params.id));
+  if (index === -1) return next(bookNotFound(req.params.id));
+
+  const nextBook = { ...books[index] };
+
+  if (req.body.title !== undefined || req.body.titulo !== undefined) {
+    nextBook.titulo = req.body.title ?? req.body.titulo;
   }
 
-  books[index] = { ...books[index], ...req.body, id };
+  if (req.body.author !== undefined || req.body.autor !== undefined) {
+    nextBook.autor = req.body.author ?? req.body.autor;
+  }
+
+  if (req.body.isbn !== undefined) nextBook.isbn = req.body.isbn;
+  if (req.body.stock !== undefined) nextBook.stock = req.body.stock;
+
+  books[index] = nextBook;
   res.status(200).json(books[index]);
 }
 
 // DELETE /books/:id
-function eliminar(req, res) {
-  const id = Number(req.params.id);
-  const index = books.findIndex((l) => l.id === id);
-  if (index === -1) {
-    return error(res, 404, "BOOK_NOT_FOUND", `No book exists with id ${req.params.id}`);
-  }
+function remove(req, res, next) {
+  const index = books.findIndex((b) => b.id === Number(req.params.id));
+  if (index === -1) return next(bookNotFound(req.params.id));
 
   books.splice(index, 1);
   res.status(200).json({ message: "Book deleted successfully" });
 }
 
-export default { listar, obtener, crear, actualizar, eliminar };
+export default { list, get, create, update, remove };

@@ -13,10 +13,10 @@ app.use(logger);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Rutas: el prefijo /books se pega acá, no en el router
+// Todas las rutas se gestionan desde routes/index.js
 app.use("/app", routes);
 
-// Ninguna ruta matcheó → 404 con formato estandarizado
+// Cierre de la fila: primero el 404, después el manejador de errores
 app.use(notFound);
 app.use(errorHandler);
 app.listen(PORT, () => {
