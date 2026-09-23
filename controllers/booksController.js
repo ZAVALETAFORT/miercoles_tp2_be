@@ -1,5 +1,7 @@
-import books from "../data/books.js";
+// import books from "../dao/booksMemoryDao.js";
 import AppError from "../errors/AppError.js";
+// import createBook  from "../useCases/createBook.js";
+import getAllBooks from "../useCases/getAllBooks.js";
 
 const getBookTitle = (book) => book.titulo ?? book.title ?? "";
 const getBookAuthor = (book) => book.autor ?? book.author ?? "";
@@ -13,31 +15,32 @@ const bookNotFound = (id) =>
   new AppError("BOOK_NOT_FOUND", `No book exists with id ${id}`, 404);
 
 // GET /books — filtro (?author=), orden (?sort=) y paginado (?page=&limit=)
-function list(req, res, next) {
-  const { author, autor, sort } = req.query;
-  let result = [...books];
+async function list(req, res, next) {
+  // const { author, autor, sort } = req.query;
+  // let result = [...books];
 
-  const term = (author ?? autor ?? "").toString().toLowerCase();
-  if (term) {
-    result = result.filter((b) => getBookAuthor(b).toLowerCase().includes(term));
-  }
+  // const term = (author ?? autor ?? "").toString().toLowerCase();
+  // if (term) {
+  //   result = result.filter((b) => getBookAuthor(b).toLowerCase().includes(term));
+  // }
 
-  if (sort) {
-    const desc = sort.toString().startsWith("-");
-    const field = desc ? sort.toString().slice(1) : sort.toString();
-    result.sort((a, b) => {
-      const left = getValueByField(a, field);
-      const right = getValueByField(b, field);
-      if (left < right) return desc ? 1 : -1;
-      if (left > right) return desc ? -1 : 1;
-      return 0;
-    });
-  }
+  // if (sort) {
+  //   const desc = sort.toString().startsWith("-");
+  //   const field = desc ? sort.toString().slice(1) : sort.toString();
+  //   result.sort((a, b) => {
+  //     const left = getValueByField(a, field);
+  //     const right = getValueByField(b, field);
+  //     if (left < right) return desc ? 1 : -1;
+  //     if (left > right) return desc ? -1 : 1;
+  //     return 0;
+  //   });
+  // }
 
-  const { page, limit } = req.pagination;
-  const from = (page - 1) * limit;
-  result = result.slice(from, from + limit);
+  // const { page, limit } = req.pagination;
+  // const from = (page - 1) * limit;
+  // result = result.slice(from, from + limit);
 
+  const result = await getAllBooks();
   res.status(200).json(result);
 }
 
@@ -49,26 +52,9 @@ function get(req, res, next) {
 }
 
 // POST /books — req.body ya validado por validate(createBookSchema)
-function create(req, res, next) {
-  const title = req.body.title ?? req.body.titulo;
-  const author = req.body.author ?? req.body.autor;
-  const { isbn, stock } = req.body;
-
-  if (isbn && books.some((b) => b.isbn === isbn)) {
-    return next(new AppError("ISBN_DUPLICATE", `A book with ISBN ${isbn} already exists`, 409));
-  }
-
-  const ids = books.map((b) => b.id);
-  const newBook = {
-    id: ids.length > 0 ? Math.max(...ids) + 1 : 1,
-    isbn: isbn ?? "No ISBN",
-    titulo: title,
-    autor: author,
-    stock,
-  };
-
-  books.push(newBook);
-  res.status(201).json(newBook);
+async function create(req, res, next) {
+// const newBook = await createBook(req.body);
+//   res.status(201).json(newBook);
 }
 
 // PUT /books/:id — req.body ya validado por validate(updateBookSchema)

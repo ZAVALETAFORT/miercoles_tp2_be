@@ -7,4 +7,9 @@ const books = [
   { id: 5, isbn: "9780393312838", titulo: "1984", autor: "George Orwell", stock: 1 },
 ];
 
-export default books;
+async function getAll() {
+  return books;
+}
+
+
+export  { getAll };

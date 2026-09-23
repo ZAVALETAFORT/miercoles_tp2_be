@@ -26,7 +26,7 @@ Content-Type: application/json
 {
   "isbn": "9788437604945",
   "titulo": "Ficciones",
-  "autor": "Jorge Luis Borges",
+  "autor": "ovaldo ojeda",
   "stock": 4
 }
 
