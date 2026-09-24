@@ -8,14 +8,15 @@ Seguimos con `biblioteca-api-express/` de la clase 6. Hoy sacamos toda la lógic
 
 Crear `dao/booksMemoryDao.js`. Tiene que exportar un objeto con los siguientes métodos, **todos `async`**:
 
-| Método       | Firma                            | Qué hace                                              |
-| ------------- | -------------------------------- | ------------------------------------------------------ |
-| `getAll`    | `() → book[]`                 | Devuelve todos los libros (copia del array)            |
-| `getById`   | `(id) → book \| null`          | Busca por id numérico                                 |
-| `getByIsbn` | `(isbn) → book \| null`        | Busca por ISBN exacto                                  |
-| `save`      | `(data) → book`               | Asigna un id autoincremental y persiste                |
-| `update`    | `(id, changes) → book \| null` | Pisa solo los campos que vienen en`changes`          |
-| `delete`    | `(id) → boolean`              | Elimina y devuelve`true`, o `false` si no existía |
+
+| Método     | Firma                  | Qué hace                                          |
+| ------------- | ------------------------ | ---------------------------------------------------- |
+| `getAll`    | `() → book[]`         | Devuelve todos los libros (copia del array)        |
+| `getById`   | `(id) → book          | null`                                              |
+| `getByIsbn` | `(isbn) → book        | null`                                              |
+| `save`      | `(data) → book`       | Asigna un id autoincremental y persiste            |
+| `update`    | `(id, changes) → book | null`                                              |
+| `delete`    | `(id) → boolean`      | Elimina y devuelve`true`, o `false` si no existía |
 
 Semilla inicial (podés moverla desde `data/books.js` — después ese archivo puede borrarse):
 
