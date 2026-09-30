@@ -1,153 +1,115 @@
-# Clase 7 — Consigna de práctica
 
-Seguimos con `biblioteca-api-express/` de la clase 6. Hoy sacamos toda la lógica de negocio del controller y la movemos a **casos de uso** independientes. Al final, el controller solo delega.
+# Clase 8 — Consigna de práctica
 
----
-
-## Ejercicio 1 — DAO en memoria
-
-Crear `dao/booksMemoryDao.js`. Tiene que exportar un objeto con los siguientes métodos, **todos `async`**:
-
-| Método       | Firma                            | Qué hace                                              |
-| ------------- | -------------------------------- | ------------------------------------------------------ |
-| `getAll`    | `() → book[]`                 | Devuelve todos los libros (copia del array)            |
-| `getById`   | `(id) → book \| null`          | Busca por id numérico                                 |
-| `getByIsbn` | `(isbn) → book \| null`        | Busca por ISBN exacto                                  |
-| `save`      | `(data) → book`               | Asigna un id autoincremental y persiste                |
-| `update`    | `(id, changes) → book \| null` | Pisa solo los campos que vienen en`changes`          |
-| `delete`    | `(id) → boolean`              | Elimina y devuelve`true`, o `false` si no existía |
-
-Semilla inicial (podés moverla desde `data/books.js` — después ese archivo puede borrarse):
-
-```js
-let books = [
-  { id: 1, titulo: "El principito",        autor: "Saint-Exupéry",  isbn: null, stock: 3 },
-  { id: 2, titulo: "Cien años de soledad", autor: "García Márquez", isbn: null, stock: 1 },
-];
-let nextId = 3;
-```
-
-> **Pista copia defensiva**: en `getAll`, devolvé `[...books]` en lugar de `books`. Así el que llama no puede modificar el array interno accidentalmente.
+En esta clase llevamos la arquitectura un paso más lejos: eliminamos la necesidad de pasar el `dao` en cada llamada a los casos de uso creando una **Factory de Casos de Uso**. Al terminar, el controlador no importará ningún DAO ni se preocupará por dependencias de almacenamiento.
 
 ---
 
-## Ejercicio 2 — Casos de uso
+## Ejercicio 1 — Factory de Casos de Uso
 
-Crear la carpeta `usecases/` con un archivo por caso de uso. Cada uno es una función `async` que recibe datos primitivos y un `dao`, y devuelve datos o lanza `AppError`.
+Crear el archivo `usecases/books/makeBookUseCases.js`.
 
-### `usecases/getBooks.js`
+Debe exportar por defecto una función `makeBookUseCases(dao)` que reciba el adaptador DAO y devuelva un objeto con los 5 casos de uso ya "preconectados" o con el `dao` inyectado:
 
 ```js
-async function getBooks(dao) {
-  return dao.getAll();
+import getBooks from "./getBooks.js";
+import getBookById from "./getBookById.js";
+import createBook from "./createBook.js";
+import updateBook from "./updateBook.js";
+import deleteBook from "./deleteBook.js";
+
+function makeBookUseCases(dao) {
+  return {
+    getBooks: (filters) => getBooks(filters, dao),
+    getBookById: (id) => getBookById(id, dao),
+    createBook: (data) => createBook(data, dao),
+    updateBook: (id, changes) => updateBook(id, changes, dao),
+    deleteBook: (id) => deleteBook(id, dao),
+  };
 }
 
-export default getBooks;
+export default makeBookUseCases;
 ```
-
-### `usecases/getBookById.js`
-
-Recibe `(id, dao)`. Llama a `dao.getById(id)`. Devuelve el libro o `null` — **no lanza error**: la decisión de si el `null` es un 404 la toma el controller (es una decisión HTTP, no de negocio).
-
-### `usecases/createBook.js`
-
-Recibe `(data, dao)` donde `data` es `{ titulo, autor, isbn, stock }` (ya validado por Zod).
-
-Reglas de negocio a implementar:
-
-1. Si `isbn` viene (no es `null`/`undefined`/`""`), verificar que no exista otro libro con ese ISBN → lanzar `AppError("ISBN_DUPLICATE", "Ese ISBN ya está registrado", 409)`.
-2. Llamar a `dao.save(data)` y devolver el libro creado.
-
-### `usecases/updateBook.js`
-
-Recibe `(id, changes, dao)`. Delega directamente a `dao.update(id, changes)`. Devuelve el libro actualizado o `null`.
-
-> ¿No hay reglas de negocio acá? Por ahora no. Si mañana aparece una (ej: "no se puede bajar el stock por debajo de las reservas activas"), va en este caso de uso — sin tocar el controller.
-
-### `usecases/deleteBook.js`
-
-Recibe `(id, dao)`. Delega a `dao.delete(id)`. Devuelve `true` o `false`.
 
 ---
 
-## Ejercicio 3 — Refactorizar el controller
+## Ejercicio 2 — Refactorizar el Controller
 
-Reescribir `controllers/booksController.js` para que **solo delegue**:
+Modificar `controllers/booksController.js`:
 
-- Importar el DAO: `import dao from "../dao/booksMemoryDao.js";`
-- Importar los 5 casos de uso.
-- Cada función del controller extrae los parámetros de `req`, llama al caso de uso, y forma la respuesta con `res`.
-- **Cero lógica de negocio** en el controller: ningún `if` que diga "el ISBN ya existe" o "el stock no puede ser negativo".
-- Los handlers son `async` y Express 5 atrapa el rechazo automáticamente.
-
-Manejo del `null` que devuelven los casos de uso:
-
-```js
-async function get(req, res) {
-  const book = await getBookById(Number(req.params.id), dao);
-  if (!book) throw new AppError("BOOK_NOT_FOUND", "No existe un libro con ese id", 404);
-  res.json(book);
-}
-```
-
-Actualizá también `routes/booksRoutes.js` para que use los nuevos nombres de método del controller (`list`, `get`, `create`, `update`, `remove`).
+1. Eliminar cualquier `import` que haga referencia a `booksMemoryDao.js` o a casos de uso individuales.
+2. Hacer que la clase `BooksController` reciba en su constructor el objeto `useCases` producido por la Factory.
+3. Actualizar los métodos del controlador para que llamen a `this.#useCases.getBooks(req.query)`, `this.#useCases.createBook(req.body)`, etc., **sin pasar el DAO como argumento**.
+4. Cambiar el `export` final: en la clase 7 el archivo exportaba una instancia ya armada (`export default new BooksController(dao)`), porque el propio archivo conocía el DAO. Ahora que el controller no conoce ninguna dependencia concreta, exportá la **clase** (`export default BooksController;`). Quien la instancia (con los casos de uso ya inyectados) es el Composition Root, no el archivo del controller.
 
 ---
 
-## Ejercicio 4 — Verificar que todo sigue funcionando
+## Ejercicio 3 — Ensamblado en el Composition Root (`index.js`)
 
-Reproducir en `requests.http` los mismos tests de la clase 6:
+Como vimos en el teórico (sección 5), el **Composition Root es el único lugar de la aplicación donde se instancian y conectan los componentes concretos** — y ese lugar es `index.js`, no `routes/`. Ni `routes/booksRoutes.js` ni `controllers/booksController.js` deben importar el DAO.
 
-1. `GET /books` → lista los 2 libros de la semilla.
-2. `GET /books/1` → detalle.
-3. `GET /books/999` → `404 BOOK_NOT_FOUND`.
-4. `POST /books` con body incompleto → `400` con `details` (Zod, igual que antes).
-5. `POST /books` válido sin ISBN → `201`, `stock: 0`.
-6. `POST /books` con ISBN → `201`.
-7. `POST /books` con el mismo ISBN → `409 ISBN_DUPLICATE`.
-8. `PUT /books/1` con `{ "stock": 10 }` → `200`, `titulo` intacto.
-9. `DELETE /books/1` → `204`.
-10. `DELETE /books/1` de nuevo → `404`.
+1. En `index.js`, importar el DAO (`booksMemoryDao.js`), la Factory (`makeBookUseCases.js`) y la clase `BooksController`.
+2. Instanciar los casos de uso: `const bookUseCases = makeBookUseCases(dao);`
+3. Instanciar el controlador pasándole los casos de uso: `const booksController = new BooksController(bookUseCases);`
+4. Convertir `routes/booksRoutes.js` en una función que recibe el controlador ya armado y devuelve el router, en vez de importar un controlador singleton:
 
-> Si todos pasan igual que en la clase 6, el refactor fue exitoso: **el comportamiento externo no cambió** aunque la estructura interna es completamente diferente.
+   ```js
+   // routes/booksRoutes.js
+   import express from "express";
+   import validate from "../middlewares/validate.js";
+   import { createBookSchema, updateBookSchema } from "../schemas/bookSchema.js";
+
+   function createBooksRouter(controller) {
+     const router = express.Router();
+
+     router.get("/", controller.list);
+     router.get("/:id", controller.get);
+     router.post("/", validate(createBookSchema), controller.create);
+     router.put("/:id", validate(updateBookSchema), controller.update);
+     router.delete("/:id", controller.remove);
+
+     return router;
+   }
+
+   export default createBooksRouter;
+   ```
+5. Actualizar `routes/index.js` para que reciba el controlador desde afuera y se lo pase a `createBooksRouter`:
+
+   ```js
+   // routes/index.js
+   import { Router } from "express";
+   import createBooksRouter from "./booksRoutes.js";
+
+   function createRouter(booksController) {
+     const router = Router();
+     router.use("/books", createBooksRouter(booksController));
+     return router;
+   }
+
+   export default createRouter;
+   ```
+6. En `index.js`, pasar el `booksController` ya armado a `createRouter(booksController)` y montar el resultado con `app.use(...)`, tal como muestra el diagrama de la sección 5 del teórico.
 
 ---
 
-## Entregable
+## Ejercicio 4 — Verificación
 
-```
-biblioteca-api-express/
-├── index.js
-├── package.json
-├── errors/AppError.js
-├── schemas/bookSchema.js
-├── dao/
-│   └── booksMemoryDao.js       ← NUEVO
-├── usecases/
-│   ├── getBooks.js             ← NUEVO
-│   ├── getBookById.js          ← NUEVO
-│   ├── createBook.js           ← NUEVO
-│   ├── updateBook.js           ← NUEVO
-│   └── deleteBook.js           ← NUEVO
-├── routes/
-│   ├── index.js                ← sin cambios (router central)
-│   └── booksRoutes.js          ← nombres de método actualizados
-├── controllers/
-│   └── booksController.js      ← MODIFICADO (solo delega)
-├── middlewares/
-│   ├── logger.js
-│   ├── validate.js
-│   ├── notFound.js
-│   └── errorHandler.js
-└── requests.http
-```
+Ejecutar las pruebas en `requests.http`:
 
-**Criterio de éxito**: no existe ningún `if` de negocio en `booksController.js`. Todo el comportamiento de los tests sigue igual.
+1. `GET /books`
+2. `GET /books/1`
+3. `POST /books` con body incompleto (400)
+4. `POST /books` válido (201)
+5. `POST /books` duplicado (409)
+6. `PUT /books/1` parcial (200)
+7. `PUT /books/1` con stock negativo (400)
+8. `DELETE /books/1` (204)
+
+**Criterio de éxito:** Todas las peticiones deben responder exactamente igual que en la Clase 7. El comportamiento externo es idéntico, pero el controlador ahora está 100% desacoplado de la infraestructura.
 
 ---
 
 ## Desafío opcional
 
-1. **Regla de stock mínimo**: En `updateBook.js`, si `changes.stock` viene y es menor a `0`, lanzar `AppError("INVALID_STOCK", "El stock no puede ser negativo", 400)`. Agregar el caso de prueba en `requests.http`.
-2. **Test manual de inyección**: En `index.js`, crear un segundo DAO "falso" que loguee cada operación en consola pero no persista nada. Pasárselo al controller en lugar del real, hacer una request y verificar que funciona con cualquier objeto que cumpla el contrato. Después revertir.
-3. **Separar el id de los datos**: En `save`, desestructurar para ignorar un posible `id` entrante: `const { id: _ignored, ...data } = book`. Documentar por qué con un comentario.
+1. **Decorador de Logger en Factory**: En `makeBookUseCases.js`, agregar un `console.log` dentro de cada función que indique qué caso de uso se está ejecutando (ejemplo: `console.log("[UseCase] Executing createBook...")`). Probar realizar peticiones HTTP y observar el log en consola.
+2. **DAO Falso Intercambiable**: En `index.js`, crear un DAO falso provisional y pasárselo a la factory en lugar de `booksMemoryDao`. Verificar que la aplicación arranca e interactúa con el nuevo adaptador sin tocar controladores.
