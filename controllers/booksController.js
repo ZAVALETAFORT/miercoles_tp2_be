@@ -1,91 +1,58 @@
-// import books from "../dao/booksMemoryDao.js";
 import AppError from "../errors/AppError.js";
-// import createBook  from "../useCases/createBook.js";
-import getAllBooks from "../useCases/getAllBooks.js";
+import dao from "../dao/booksMemoryDao.js";
+import getBooks from "../useCases/books/getBooks.js";
+import getBookById from "../useCases/books/getBookById.js";
+import createBook from "../useCases/books/createBook.js";
+import updateBook from "../useCases/books/updateBook.js";
+import deleteBook from "../useCases/books/deleteBook.js";
 
-const getBookTitle = (book) => book.titulo ?? book.title ?? "";
-const getBookAuthor = (book) => book.autor ?? book.author ?? "";
-const getValueByField = (book, field) => {
-  if (field === "title" || field === "titulo") return getBookTitle(book);
-  if (field === "author" || field === "autor") return getBookAuthor(book);
-  return book[field] ?? "";
-};
+/**
+ * Controlador de Libros basado en Clases.
+ * Recibe la instancia del DAO a través de Inyección de Dependencias en el constructor.
+ * Utiliza propiedades de flecha para preservar la referencia a `this.#dao` al pasarse como middleware en Express.
+ */
+class BooksController {
+  // El prefijo '#' indica un campo privado de clase (ES2020).
+  // Solo se puede acceder a `#dao` desde dentro de esta clase (encapsulamiento).
+  #dao;
 
-const bookNotFound = (id) =>
-  new AppError("BOOK_NOT_FOUND", `No book exists with id ${id}`, 404);
-
-// GET /books — filtro (?author=), orden (?sort=) y paginado (?page=&limit=)
-async function list(req, res, next) {
-  // const { author, autor, sort } = req.query;
-  // let result = [...books];
-
-  // const term = (author ?? autor ?? "").toString().toLowerCase();
-  // if (term) {
-  //   result = result.filter((b) => getBookAuthor(b).toLowerCase().includes(term));
-  // }
-
-  // if (sort) {
-  //   const desc = sort.toString().startsWith("-");
-  //   const field = desc ? sort.toString().slice(1) : sort.toString();
-  //   result.sort((a, b) => {
-  //     const left = getValueByField(a, field);
-  //     const right = getValueByField(b, field);
-  //     if (left < right) return desc ? 1 : -1;
-  //     if (left > right) return desc ? -1 : 1;
-  //     return 0;
-  //   });
-  // }
-
-  // const { page, limit } = req.pagination;
-  // const from = (page - 1) * limit;
-  // result = result.slice(from, from + limit);
-
-  const result = await getAllBooks();
-  res.status(200).json(result);
-}
-
-// GET /books/:id
-function get(req, res, next) {
-  const book = books.find((b) => b.id === Number(req.params.id));
-  if (!book) return next(bookNotFound(req.params.id));
-  res.status(200).json(book);
-}
-
-// POST /books — req.body ya validado por validate(createBookSchema)
-async function create(req, res, next) {
-// const newBook = await createBook(req.body);
-//   res.status(201).json(newBook);
-}
-
-// PUT /books/:id — req.body ya validado por validate(updateBookSchema)
-function update(req, res, next) {
-  const index = books.findIndex((b) => b.id === Number(req.params.id));
-  if (index === -1) return next(bookNotFound(req.params.id));
-
-  const nextBook = { ...books[index] };
-
-  if (req.body.title !== undefined || req.body.titulo !== undefined) {
-    nextBook.titulo = req.body.title ?? req.body.titulo;
+  constructor(daoDependency = dao) {
+    this.#dao = daoDependency;
   }
 
-  if (req.body.author !== undefined || req.body.autor !== undefined) {
-    nextBook.autor = req.body.author ?? req.body.autor;
-  }
+  // GET /books (?autor=...&isbn=...&sort=...)
+  list = async (req, res) => {
+    const books = await getBooks(req.query, this.#dao);
+    res.json(books);
+  };
 
-  if (req.body.isbn !== undefined) nextBook.isbn = req.body.isbn;
-  if (req.body.stock !== undefined) nextBook.stock = req.body.stock;
+  // GET /books/:id
+  get = async (req, res) => {
+    const book = await getBookById(Number(req.params.id), this.#dao);
+    if (!book) throw new AppError("BOOK_NOT_FOUND", "No existe un libro con ese id", 404);
+    res.json(book);
+  };
 
-  books[index] = nextBook;
-  res.status(200).json(books[index]);
+  // POST /books
+  create = async (req, res) => {
+    const book = await createBook(req.body, this.#dao);
+    res.status(201).json(book);
+  };
+
+  // PUT /books/:id
+  update = async (req, res) => {
+    const book = await updateBook(Number(req.params.id), req.body, this.#dao);
+    if (!book) throw new AppError("BOOK_NOT_FOUND", "No existe un libro con ese id", 404);
+    res.json(book);
+  };
+
+  // DELETE /books/:id
+  remove = async (req, res) => {
+    const deleted = await deleteBook(Number(req.params.id), this.#dao);
+    if (!deleted) throw new AppError("BOOK_NOT_FOUND", "No existe un libro con ese id", 404);
+    res.status(204).send();
+  };
 }
 
-// DELETE /books/:id
-function remove(req, res, next) {
-  const index = books.findIndex((b) => b.id === Number(req.params.id));
-  if (index === -1) return next(bookNotFound(req.params.id));
-
-  books.splice(index, 1);
-  res.status(200).json({ message: "Book deleted successfully" });
-}
-
-export default { list, get, create, update, remove };
+export { BooksController };
+export default new BooksController(dao);

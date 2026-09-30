@@ -117,29 +117,6 @@ flowchart TD
 
 Un **caso de uso** es una función (o clase) que implementa **una acción del negocio**. No recibe `req`, no toca `res`, no sabe que existe HTTP. Solo recibe datos primitivos y devuelve datos primitivos (o tira un `AppError`).
 
-```js
-// usecases/createBook.js
-import AppError from "../errors/AppError.js";
-
-async function createBook({ titulo, autor, isbn, stock }, dao) {
-  // Regla de negocio: ISBN único
-  if (isbn) {
-    const existing = await dao.getByIsbn(isbn);
-    if (existing) {
-      throw new AppError("ISBN_DUPLICATE", "Ese ISBN ya está registrado", 409);
-    }
-  }
-
-  // Armamos el objeto libro
-  const newBook = { titulo, autor, isbn, stock: stock ?? 0 };
-
-  // Delegamos el guardado al DAO — no sabe cómo lo hace
-  return dao.save(newBook);
-}
-
-export default createBook;
-```
-
 Cosas importantes:
 
 - **Sin `req`, sin `res`**: la firma es `(datos, dao)`, no `(req, res, next)`.
@@ -164,9 +141,21 @@ El controller ahora hace exactamente dos cosas: extraer datos de `req` y formar 
 
 ---
 
-## 4. El DAO como "puerto"
+## 4. El DAO como "puerto" (Arquitectura Hexagonal)
 
-**DAO** son las siglas de *Data Access Object*. En nuestra arquitectura, el DAO es un **contrato** (implícito en JS) que describe qué operaciones de datos necesita el negocio:
+**DAO** son las siglas de *Data Access Object*. En la Arquitectura Hexagonal, el DAO actúa como un **Puerto (Port)**.
+
+### ¿Qué es un Puerto y qué es un Adaptador en programación?
+
+Para comprender ambos términos, se puede utilizar la analogía del hardware de un televisor o una computadora:
+
+- **Un Puerto (Port):** Es la ranura o conexión estándar (por ejemplo, un puerto USB o un puerto HDMI). El puerto no sabe qué dispositivo específico se conectará (puede ser una consola de juegos, una computadora o un decodificador). Únicamente establece la **forma y las reglas de la conexión (el contrato)**.
+- **Un Adaptador (Adapter):** Es el cable o dispositivo concreto que se conecta al puerto para realizar la tarea real.
+
+En el software de nuestra aplicación:
+
+- **El Puerto (Contrato):** Es la definición de las operaciones que la lógica de negocio exige para funcionar. Por ejemplo, requerir un objeto `dao` que disponga de los métodos `getAll()`, `getById()`, `getByIsbn()`, `save()`, `update()` y `delete()`.
+- **El Adaptador (Implementación concreta):** Es el archivo de código que ejecuta la persistencia real. Hoy nuestro adaptador es `booksMemoryDao.js` (que guarda los datos en un array). En la clase 9 nuestro adaptador será `booksSqlDao.js` (que guardará los datos en MySQL mediante Sequelize).
 
 ```
 dao.getAll()              → Promise<book[]>
@@ -177,7 +166,7 @@ dao.update(id, changes)   → Promise<book | null>
 dao.delete(id)            → Promise<boolean>
 ```
 
-En lenguajes con interfaces (TypeScript, Java), esto sería una `interface`. En JavaScript puro es un acuerdo: "cualquier objeto que tenga estos métodos funciona como DAO".
+En lenguajes con interfaces (como TypeScript o Java), este Puerto se define mediante una `interface`. En JavaScript puro es un contrato o acuerdo implícito: "cualquier objeto que implemente estos métodos funciona como DAO".
 
 ### El adaptador en memoria (hoy)
 

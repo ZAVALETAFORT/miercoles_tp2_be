@@ -1,5 +1,6 @@
+// Error personalizado de la aplicación para excepciones de dominio e HTTP
 class AppError extends Error {
-  constructor(code, message, statusCode = 400, details) {
+  constructor(code, message, statusCode = 400, details = undefined) {
     super(message);
     this.name = "AppError";
     this.code = code;
