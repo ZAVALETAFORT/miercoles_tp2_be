@@ -1,5 +1,4 @@
 import express from "express";
-import booksController from "../controllers/booksController.js";
 import validate, { validateQuery, validateParams } from "../middlewares/validate.js";
 import {
   createBookSchema,
@@ -8,13 +7,20 @@ import {
   bookIdParamSchema,
 } from "../schemas/bookSchema.js";
 
-const booksRoutes = express.Router();
+/**
+ * Factory de Router para Libros.
+ * Recibe el controlador ya instanciado (con los casos de uso inyectados) y configura los endpoints.
+ */
+function createBooksRouter(controller) {
+  const router = express.Router();
 
-// Definición de endpoints delegando a las funciones de la instancia de BooksController con validaciones
-booksRoutes.get("/", validateQuery(queryBooksSchema), booksController.list);
-booksRoutes.get("/:id", validateParams(bookIdParamSchema), booksController.get);
-booksRoutes.post("/", validate(createBookSchema), booksController.create);
-booksRoutes.put("/:id", validateParams(bookIdParamSchema), validate(updateBookSchema), booksController.update);
-booksRoutes.delete("/:id", validateParams(bookIdParamSchema), booksController.remove);
+  router.get("/", validateQuery(queryBooksSchema), controller.list);
+  router.get("/:id", validateParams(bookIdParamSchema), controller.get);
+  router.post("/", validate(createBookSchema), controller.create);
+  router.put("/:id", validateParams(bookIdParamSchema), validate(updateBookSchema), controller.update);
+  router.delete("/:id", validateParams(bookIdParamSchema), controller.remove);
 
-export default booksRoutes;
+  return router;
+}
+
+export default createBooksRouter;

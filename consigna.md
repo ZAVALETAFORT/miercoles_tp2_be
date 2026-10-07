@@ -1,4 +1,3 @@
-
 # Clase 8 — Consigna de práctica
 
 En esta clase llevamos la arquitectura un paso más lejos: eliminamos la necesidad de pasar el `dao` en cada llamada a los casos de uso creando una **Factory de Casos de Uso**. Al terminar, el controlador no importará ningún DAO ni se preocupará por dependencias de almacenamiento.

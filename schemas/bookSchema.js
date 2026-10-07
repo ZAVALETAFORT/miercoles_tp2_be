@@ -7,19 +7,21 @@ const fields = {
   isbn: z.string().regex(/^\d{13}$/, "El ISBN debe tener exactamente 13 dígitos"),
   stock: z
     .number({ error: "El stock debe ser un número" })
-    .int("El stock debe ser un número entero")
-    .nonnegative("El stock no puede ser negativo"),
+    .int("El stock debe ser un número entero"),
 };
 
 // Esquema para POST /books
+// El stock inicial no puede ser negativo: se valida acá porque es una regla de forma del dato de entrada.
 const createBookSchema = z.object({
   titulo: fields.titulo,
   autor: fields.autor,
   isbn: fields.isbn.optional(),
-  stock: fields.stock.default(0),
+  stock: fields.stock.nonnegative("El stock no puede ser negativo").default(0),
 });
 
 // Esquema para PUT /books/:id (actualización parcial)
+// Acá el stock NO se valida como no-negativo: esa regla es de negocio y vive en usecases/books/updateBook.js,
+// para dejar la demostración de "regla de negocio vs. validación de forma" del ejercicio.
 const updateBookSchema = z.object({
   titulo: fields.titulo.optional(),
   autor: fields.autor.optional(),
@@ -27,7 +29,7 @@ const updateBookSchema = z.object({
   stock: fields.stock.optional(),
 });
 
-// Esquema de paginación básica
+// Esquema de paginación para query params
 const paginationSchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),

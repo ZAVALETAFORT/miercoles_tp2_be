@@ -1,4 +1,3 @@
-
 # Clase 8 — Patrón DAO / Repository y Factories: Inyección de Dependencias Manual
 
 ## Objetivos de la clase

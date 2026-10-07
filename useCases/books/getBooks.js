@@ -1,5 +1,5 @@
 /**
- * Caso de Uso: Obtener todos los libros con soporte para filtros, ordenamiento y paginación.
+ * Caso de Uso: Obtener todos los libros con soporte para filtros y ordenamiento.
  * Recibe los filtros y el `dao` como dependencia (Inversión de Dependencias).
  */
 async function getBooks(filters = {}, dao) {

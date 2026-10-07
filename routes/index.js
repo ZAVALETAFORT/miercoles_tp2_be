@@ -1,9 +1,17 @@
 import { Router } from "express";
-import booksRoutes from "./booksRoutes.js";
+import createBooksRouter from "./booksRoutes.js";
 
-const router = Router();
+/**
+ * Router principal centralizado.
+ * Recibe las dependencias de controladores necesarias y las propaga a los sub-routers.
+ */
+function createRouter(booksController) {
+  const router = Router();
 
-// Montamos los routers de recursos con su prefijo base
-router.use("/books", booksRoutes);
+  // Montamos los routers de recursos
+  router.use("/books", createBooksRouter(booksController));
 
-export default router;
+  return router;
+}
+
+export default createRouter;
