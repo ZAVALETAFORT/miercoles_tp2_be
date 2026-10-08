@@ -4,6 +4,11 @@ import logger from "./middlewares/logger.js";
 import notFound from "./middlewares/notFound.js";
 import errorHandler from "./middlewares/errorHandler.js";
 
+//usuarios
+import getUsersDao from "./dao/getUsersDao.js";
+import makeUserUseCases from "./useCases/users/makeUserUseCases.js";
+import UsersController from "./controllers/usersController.js";
+
 // Importación del módulo de configuración centralizada de variables de entorno
 import { PORT } from "./config/config.js";
 
@@ -30,13 +35,21 @@ const app = express();
 // -----------------------------------------------------------------------------
 const bookUseCases = makeBookUseCases(booksMemoryDao);
 const booksController = new BooksController(bookUseCases);
-const router = createRouter(booksController);
+//const router = createRouter(booksController);
+
+
+// Inyección de dependencias de usuarios
+const usersDao = getUsersDao();
+const userUseCases = makeUserUseCases(usersDao);
+const usersController = new UsersController(userUseCases);
+
+const router = createRouter(booksController, usersController);
 
 // Middlewares globales
 app.use(logger);
 app.use(express.json());
 
-sequelize.sync({ alter: true });
+//sequelize.sync({ alter: true });
 
 // Router centralizado de la aplicación
 // MODIFICADO: El contenedor incorpora las rutas de usuarios

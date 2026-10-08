@@ -86,3 +86,47 @@ GET http://localhost:8000/books?page=1&limit=1
 ### 17. Intentar enviar query params inválidos (error de validación de query 400)
 GET http://localhost:8000/books?limit=-5
 
+
+
+//Clase 9 — Consigna de Práctica (Tarea Integradora)
+
+### EJERCICIO 6 - USUARIOS
+
+### 1. Listar usuarios
+GET http://localhost:8000/users
+
+### 2. Crear usuario
+POST http://localhost:8000/users
+Content-Type: application/json
+
+{
+  "nombre": "Fernando",
+  "email": "fernando@test.com",
+  "rol": "lector"
+}
+
+### 3. Buscar usuario por ID
+GET http://localhost:8000/users/1
+
+### 4. Actualizar usuario
+PUT http://localhost:8000/users/1
+Content-Type: application/json
+
+{
+  "nombre": "Fernando Actualizado"
+}
+
+### 5. Comprobar email duplicado
+POST http://localhost:8000/users
+Content-Type: application/json
+
+{
+  "nombre": "Otro Usuario",
+  "email": "fernando@test.com"
+}
+
+### 6. Eliminar usuario
+DELETE http://localhost:8000/users/1
+
+### 7. Comprobar usuario eliminado
+GET http://localhost:8000/users/1
