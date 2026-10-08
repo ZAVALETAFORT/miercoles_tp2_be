@@ -9,12 +9,15 @@ import { PORT } from "./config/config.js";
 
 // Importación de módulos de arquitectura para la composición
 import booksMemoryDao from "./dao/booksMemoryDao.js";
-import makeBookUseCases from "./usecases/books/makeBookUseCases.js";
+import makeBookUseCases from "./useCases/books/makeBookUseCases.js";
 import BooksController from "./controllers/booksController.js";
 import createRouter from "./routes/index.js";
 
 import sequelize from "./connection/sequelize.js";
-import User from "./dao/Model/User.js"
+import User from "./dao/Model/User.js";
+
+// AGREGADO: Contenedor de dependencias
+import createContainer from "./container/container.js";
 
 const app = express();
 
@@ -36,12 +39,15 @@ app.use(express.json());
 sequelize.sync({ alter: true });
 
 // Router centralizado de la aplicación
-app.use(router);
+// MODIFICADO: El contenedor incorpora las rutas de usuarios
+app.use(await createContainer());
 
 // Manejadores de cierre (404 Not Found y Error Handler global)
 app.use(notFound);
 app.use(errorHandler);
 
 app.listen(PORT, () => {
-  console.log(`Servidor Express (Clase 8) corriendo en http://localhost:${PORT}`);
+  console.log(
+    `Servidor Express (Clase 8) corriendo en http://localhost:${PORT}`,
+  );
 });
