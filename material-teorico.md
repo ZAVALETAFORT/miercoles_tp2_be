@@ -1,327 +1,154 @@
-# Clase 8 — Patrón DAO / Repository y Factories: Inyección de Dependencias Manual
+# Clase 9 — Persistencia Intercambiable (Sequelize), Relaciones e Inyección de Dependencias (IoC)
 
 ## Objetivos de la clase
 
-- Comprender en profundidad las diferencias entre el patrón **DAO (Data Access Object)** y el **Repository Pattern**.
-- Identificar el problema de ergonomía y acoplamiento al pasar dependencias manualmente en cada llamada.
-- Entender qué es el patrón **Factory (Fábrica)** y cómo automatizar la creación e inyección de dependencias en Node.js puro.
-- Implementar una **Factory de Casos de Uso** que encapsule las dependencias y devuelva funciones o servicios listos para ser consumidos.
-- Refactorizar el controlador para que no conozca ningún DAO, interactuando únicamente con los casos de uso configurados.
-- Dejar el proyecto 100% preparado para la Clase 9 (donde intercambiaremos el motor de persistencia por Sequelize sin modificar la lógica de negocio ni la capa HTTP).
+- Comprender el **Principio Abierto/Cerrado (OCP)** y la **Inversión de Dependencias (DIP)** al intercambiar bases de datos sin modificar reglas de negocio.
+- Introducir **Sequelize** como ORM y **SQLite** como motor de persistencia SQL.
+- Definir **Relaciones entre Modelos** (ej. `hasMany`, `belongsTo`) centralizadas en la carpeta `dao/models/`.
+- Refactorizar el Composition Root en un **Contenedor de Inyección de Dependencias (IoC Container)** para mantener `index.js` limpio y escalable.
 
 ---
 
-## 1. Dónde estamos y cuál es el problema actual
+## 1. El Principio de Persistencia Intercambiable
 
-En la clase 7 logramos un hito fundamental: **extrajimos la lógica de negocio del controlador** y la movimos a casos de uso independientes (`getBooks`, `getBookById`, `createBook`, `updateBook`, `deleteBook`), creando además el puerto `booksMemoryDao.js`.
+En la Clase 8 desacoplamos los Controladores y los Casos de Uso del adaptador DAO. La prueba de fuego para validar que nuestra arquitectura es "Limpia" (Clean Architecture) es poder **cambiar la base de datos sin tocar ni una sola línea de código en la capa HTTP ni en el dominio**.
 
-Sin embargo, si miramos nuestro controlador actual ([booksController.js](file:///Users/osvaldoojeda/Desktop/clases_node/osvaldo/clases/7_clase/controllers/booksController.js)):
+### ¿Por qué cambiaríamos de persistencia?
+- **Desarrollo vs Producción:** Usar SQLite local (o memoria) para testear y PostgreSQL para producción.
+- **Evolución del Proyecto:** Iniciar rápido con JSON o Memoria, y migrar luego a bases de datos relacionales robustas sin frenar el desarrollo de nuevas reglas de negocio.
+- **Multitenancy o Arquitecturas Nube:** Diferentes clientes podrían requerir distintos motores de almacenamiento bajo el mismo sistema.
+
+---
+
+## 2. Introducción a Sequelize y SQLite
+
+**Sequelize** es un ORM (Object-Relational Mapper) para Node.js. Facilita la interacción con bases de datos SQL mediante métodos de JavaScript en lugar de escribir consultas crudas (ej. `SELECT * FROM books`).
+
+En esta clase utilizaremos **SQLite** (`sqlite3`). A diferencia de MySQL o Postgres, SQLite guarda toda la base de datos en memoria (o en un simple archivo `.sqlite` local). Esto es ideal para practicar, ya que **no requiere instalar ningún motor externo**.
+
+### Modelos basados en Clases (ES6)
+A diferencia de usar `sequelize.define()`, la forma moderna y recomendada (especialmente para tener buen tipado y extensibilidad) es utilizar **Clases ES6** que extienden de `Model`.
 
 ```js
-// controllers/booksController.js — Situación de la clase 7
-import dao from "../dao/booksMemoryDao.js";
-import getBooks from "../usecases/books/getBooks.js";
-import createBook from "../usecases/books/createBook.js";
+import { Model, DataTypes } from "sequelize";
+import sequelize from "../sequelize.js";
 
-class BooksController {
-  #dao;
+class BookModel extends Model {}
 
-  constructor(daoDependency = dao) {
-    this.#dao = daoDependency;
+BookModel.init(
+  {
+    id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+    titulo: { type: DataTypes.STRING, allowNull: false },
+    // ... otros campos
+  },
+  {
+    sequelize, // Pasamos la instancia de conexión
+    modelName: "Book",
+    tableName: "books",
   }
+);
+```
 
-  list = async (req, res) => {
-    const books = await getBooks(req.query, this.#dao); // ← Hay que pasar this.#dao en cada llamada
-    res.json(books);
-  };
+---
 
-  create = async (req, res) => {
-    const book = await createBook(req.body, this.#dao); // ← Otra vez pasando este argumento
-    res.status(201).json(book);
-  };
+## 3. Validaciones vs Restricciones (Constraints)
+
+Cuando defines tu modelo en Sequelize, verás que puedes agregar tanto restricciones (`allowNull: false`, `unique: true`) como validaciones (`validate: { isEmail: true }`). Es fundamental entender la diferencia:
+
+### Restricciones (Constraints)
+- **Dónde actúan:** A nivel de la Base de Datos (en el motor SQL).
+- **Ejemplos:** `allowNull: false`, `unique: true`, llaves foráneas (`foreignKey`).
+- **Qué pasa si fallan:** La base de datos rechaza la operación y lanza un error de integridad (por ejemplo, `SequelizeUniqueConstraintError`). 
+- **Ventaja:** Garantizan la integridad de los datos incluso si alguien inserta datos usando otra aplicación o la terminal SQL directamente.
+
+### Validaciones
+- **Dónde actúan:** A nivel de la aplicación Node.js (ORM). Sequelize las ejecuta **antes** de enviar la consulta a la base de datos.
+- **Ejemplos:** `isEmail: true`, `len: [2, 10]`, `notEmpty: true`, `min: 0`.
+- **Qué pasa si fallan:** Sequelize ni siquiera ejecuta el `INSERT` o `UPDATE`; lanza un error `SequelizeValidationError` inmediatamente en Node.js.
+- **Ventaja:** Puedes proveer mensajes de error amigables (`msg: "El email no es válido"`) y evitar viajes innecesarios (round-trips) a la base de datos para consultas que sabemos que van a fallar.
+
+**Buenas Prácticas:** Se deben usar ambas juntas. Las validaciones mejoran la experiencia del desarrollador/usuario (errores claros), y las restricciones blindan la consistencia de los datos en disco.
+
+---
+
+## 4. Estructura de Modelos y Relaciones (`dao/models/index.js`)
+
+A medida que el proyecto crece, no solo tenemos `Libros`, sino `Usuarios`, `Préstamos`, etc. Las tablas en bases de datos relacionales se asocian entre sí mediante claves foráneas (Foreign Keys).
+
+Para mantener el orden, agrupamos todos los modelos en `dao/models/` y utilizamos un archivo `index.js` dentro de esa carpeta para **centralizar y definir las relaciones**. Esto evita problemas de dependencias circulares al importar modelos.
+
+```js
+// dao/models/index.js
+import sequelize from "../sequelize.js";
+import BookModel from "./BookModel.js";
+import UserModel from "./UserModel.js";
+
+// Relación 1:N -> Un Usuario puede tener muchos Libros asociados (ej. prestados o creados)
+UserModel.hasMany(BookModel, { foreignKey: "userId", as: "libros" });
+
+// Relación N:1 -> Un Libro pertenece a un Usuario
+BookModel.belongsTo(UserModel, { foreignKey: "userId", as: "usuario" });
+
+export { sequelize, BookModel, UserModel };
+```
+*Si quieres explorar relaciones más complejas (`belongsToMany` para tablas intermedias), visita la [documentación oficial de Sequelize](https://sequelize.org/docs/v6/core-concepts/assocs/).*
+
+---
+
+## 5. Adaptador DAO SQL (`BooksSequelizeDao.js`)
+
+Creamos un nuevo adaptador que cumple con **la misma interfaz** que `BooksMemoryDao`, pero usa comandos SQL bajo el capó.
+
+Un punto crítico: los Casos de Uso esperan **objetos planos JavaScript**, no instancias mágicas de Sequelize (que vienen llenas de metadatos y métodos ocultos). Por eso usamos `raw: true` o `get({ plain: true })`.
+
+```js
+async getAll() {
+  // Retorna objetos planos en lugar de instancias de modelo ORM
+  return await BookModel.findAll({ raw: true });
 }
 ```
 
-### El problema de ergonomía y mantenimiento
-
-1. **Repetición constante:** En cada handler del controlador tenemos que estar pasando explícitamente `this.#dao` como argumento al caso de uso.
-2. **El controlador conoce los detalles del negocio:** El controlador sabe que `createBook` o `getBooks` necesitan un DAO para funcionar. Si mañana `createBook` necesita además un servicio de email (`mailer`) y un registrador de auditoría (`logger`), tendríamos que cambiar la firma a `createBook(req.body, this.#dao, this.#mailer, this.#logger)` y actualizar el controlador.
-3. **Acoplamiento residual:** El controlador sigue importando el DAO por defecto `import dao from "../dao/booksMemoryDao.js"`.
-
-**La pregunta clave es:** ¿Cómo logramos que el controlador invoque casos de uso que ya tengan sus dependencias "preconectadas" o "enchufadas", de modo que el controlador solo llame a `useCases.create(req.body)`?
-
 ---
 
-## 2. El Patrón DAO / Repository en profundidad
+## 6. El Contenedor de Inyección de Dependencias (IoC Container)
 
-Antes de resolver las factories, aclaremos la diferencia teórica entre dos patrones que a menudo se usan como sinónimos: **DAO** y **Repository**.
+En la clase anterior hacíamos la inicialización de DAOs y UseCases en `index.js`.
+Pero ahora tenemos configuración de base de datos, múltiples DAOs (Books y Users), y lógica asíncrona (como `sequelize.sync()`). Si dejamos todo en `index.js`, se volverá ilegible.
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        CASO DE USO                              │
-└───────────────────────────────┬─────────────────────────────────┘
-                                │
-                 ┌──────────────┴──────────────┐
-                 ▼                             ▼
-   ┌───────────────────────────┐ ┌───────────────────────────┐
-   │     Patrón REPOSITORY     │ │        Patrón DAO         │
-   │  (Colección de Dominio)   │ │   (Acceso a Datos SQL/BD) │
-   └─────────────┬─────────────┘ └─────────────┬─────────────┘
-                 │                             │
-                 ▼                             ▼
-      Entidades de Dominio            Tablas / Filas / JSON
-```
-
-### DAO (Data Access Object)
-
-* **Enfoque:** Orientado a la base de datos y al acceso de datos crudo.
-* **Propósito:** Abstraer las consultas SQL, llamadas a ORMs o lectura de archivos JSON.
-* **Vocabulario:** Métodos relacionados a tablas o registros (`insert`, `update`, `delete`, `findByIsbn`).
-* **Uso típico:** Proyectos medianos en Node.js, microservicios o apis Express directas.
-
-### Repository
-
-* **Enfoque:** Orientado al Dominio (Domain-Driven Design - DDD).
-* **Propósito:** Simular que los datos viven en una colección gigante en memoria de objetos de dominio.
-* **Vocabulario:** Métodos orientados a la colección (`add`, `remove`, `findMatching`).
-* **Uso típico:** Arquitecturas limpias complejas con modelos de dominio ricos.
-
-> **En este curso:** Usamos la nomenclatura **DAO** porque nuestro adaptador abstrae las operaciones CRUD fundamentales de persistencia de manera directa e intuitiva.
-
----
-
-### ¿Qué es el "Dominio" (Domain) en palabras simples?
-
-Para entender por qué separamos **DAO** (o **Repository**) de los **Casos de Uso**, primero hay que entender qué es el **Dominio del Negocio**:
-
-> **El Dominio son las reglas del problema del mundo real que resuelve tu sistem a, independientemente de la tecnología utilizada.**
-
-Pensalo con un ejemplo sin computadoras:
-Imaginá una **biblioteca física de papel** manejada con ficheros. Las reglas del negocio son:
-
-* *"Un libro con stock 0 no se puede prestar."*
-* *"No pueden registrarse dos libros con el mismo código ISBN."*
-* *"El stock no puede ser un número negativo."*
-
-Esas reglas forman el **DOMINIO**. Existen exactamente igual si la biblioteca usa un fichero de papel, un cuaderno viejo o un servidor en la nube con Express y MySQL.
-
-#### ¿Qué NO es Dominio? (Infraestructura / Tecnología)
-
-Express, HTTP 200/404, Zod, `req.body`, `res.json()`, MySQL, Sequelize o un Arreglo JS. Todo eso es **Infraestructura** (las herramientas tecnológicas que usás para mostrar o guardar los datos).
-
-#### En nuestra arquitectura por capas:
-
-1. **Capa HTTP / Controladores (`routes/`, `controllers/`):** Maneja el protocolo web (`req`, `res`, respuestas JSON, esquemas Zod).
-2. **Capa de Dominio / Casos de Uso (`usecases/`):** Ejecuta las reglas de negocio reales (*"Verificar que el ISBN no esté duplicado"*).
-3. **Capa de Persistencia / DAO (`dao/`):** Guarda y recupera los datos (en memoria o en la base de datos).
-
----
-
-## 3. Patrón Factory: ¿Qué es y qué problema resuelve?
-
-Una **Factory (Fábrica)** es un patrón de diseño creacional cuyo objetivo es **encapsular la lógica de instanciación o construcción de objetos**.
-
-En lugar de construir un objeto manualmente en múltiples partes de la aplicación haciendo `new Objeto(dep1, dep2, dep3)`, le pedimos a la Factory que lo construya por nosotros.
-
-```mermaid
-flowchart LR
-    Deps["Dependencias\n(booksMemoryDao, logger)"] --> Factory["Factory de Casos de Uso\nmakeBookUseCases(dao)"]
-    Factory --> UC["Casos de Uso Preconectados\n{ getBooks, createBook, ... }"]
-    UC --> Controller["BooksController\n(solo ejecuta)"]
-```
-
-*(si tu editor no renderiza Mermaid, instalá la extensión "Markdown Preview Mermaid Support" en VSCode, o mirá el archivo directamente en GitHub)*
-
-### ¿Por qué usaremos una Factory para los Casos de Uso?
-
-Queremos que la Factory reciba las dependencias **una sola vez** al iniciar la aplicación (en el arranque) y devuelva un objeto con todos los casos de uso ya listos para usar, sin que el controlador tenga que preocuparse por pasar el `dao`.
-
----
-
-## 4. Implementación de una Factory en JavaScript
-
-En JavaScript tenemos dos formas principales de implementar este patrón de manera limpia:
-
-### Enfoque A: Mediante funciones de orden superior y clausuras (Closures) — Recomendado
-
-Aprovechando que en JS las funciones son ciudadanos de primer orden y pueden retornar objetos con funciones cerradas sobre sus variables (*closures*):
+Movemos todo el **Composition Root** a `container/container.js`:
 
 ```js
-// usecases/books/makeBookUseCases.js
-import getBooks from "./getBooks.js";
-import getBookById from "./getBookById.js";
-import createBook from "./createBook.js";
-import updateBook from "./updateBook.js";
-import deleteBook from "./deleteBook.js";
+// container/container.js
+async function buildContainer() {
+  const booksDao = getBooksDao(); // Factory elige memoria o sequelize
+  if (booksDao.init) await booksDao.init(); // Inicializa SQLite
 
-/**
- * Factory que recibe las dependencias e inyecta el DAO en cada caso de uso.
- * Retorna un objeto con métodos que solo reciben los datos del request.
- */
-function makeBookUseCases(dao) {
-  return {
-    getBooks: (filters) => getBooks(filters, dao),
-    getBookById: (id) => getBookById(id, dao),
-    createBook: (data) => createBook(data, dao),
-    updateBook: (id, changes) => updateBook(id, changes, dao),
-    deleteBook: (id) => deleteBook(id, dao),
-  };
-}
+  const bookUseCases = makeBookUseCases(booksDao);
+  const booksController = new BooksController(bookUseCases);
 
-export default makeBookUseCases;
-```
-
-#### ¿Qué sucede aquí?
-
-Cuando la aplicación arranca, ejecutamos `makeBookUseCases(booksMemoryDao)`. El objeto resultante contiene métodos como `createBook(data)`. La variable `dao` queda "atrapada" en el *closure* de la función. El controlador ya no necesita saber qué es un DAO.
-
----
-
-### Enfoque B: Mediante una clase contenedora de servicios
-
-También es común agruparlos dentro de una clase `BookService` o `BookUseCasesContainer`:
-
-```js
-// usecases/books/BookUseCases.js
-export class BookUseCases {
-  #dao;
-
-  constructor(dao) {
-    this.#dao = dao;
-  }
-
-  getBooks(filters) { return getBooks(filters, this.#dao); }
-  getBookById(id) { return getBookById(id, this.#dao); }
-  createBook(data) { return createBook(data, this.#dao); }
-  updateBook(id, changes) { return updateBook(id, changes, this.#dao); }
-  deleteBook(id) { return deleteBook(id, this.#dao); }
+  const router = Router();
+  router.use("/books", createBooksRouter(booksController));
+  
+  return router; // Retorna el router completo y listo
 }
 ```
 
-Ambos enfoques son completamente válidos. El **Enfoque A (función factory con closures)** es el más idiómatico en Node.js funcional por su ligereza.
-
----
-
-## 5. El Punto de Ensamblado (Composition Root)
-
-Un principio clave en la arquitectura limpia es el concepto de **Composition Root (Raíz de Composición)**:
-
-> **El Composition Root es el único lugar de la aplicación donde se instancian y conectan los componentes concretos.**
-
-Típicamente, esto ocurre en el archivo de entrada (`index.js`) o en un archivo de configuración de dependencias (`container.js` / `dependencies.js`).
-
-### Diagrama del flujo de composición:
-
-```
-[1. index.js]
-     │
-     ├── 2. Instancia / Importa: booksMemoryDao
-     │
-     ├── 3. Llama a: makeBookUseCases(booksMemoryDao)
-     │        └── Retorna: bookUseCases (con el DAO ya inyectado)
-     │
-     └── 4. Pasa bookUseCases al Router / Controller
-              └── Controller listo para responder HTTP
-```
-
----
-
-## 6. El Controller después del refactor con Factory
-
-Así se ve nuestro `booksController.js` al usar la Factory de casos de uso:
+Ahora, en nuestro punto de entrada `index.js`, **el código queda ultra limpio**:
 
 ```js
-// controllers/booksController.js
-import AppError from "../errors/AppError.js";
+// index.js
+import buildContainer from "./container/container.js";
 
-class BooksController {
-  #useCases;
-
-  constructor(useCases) {
-    this.#useCases = useCases;
-  }
-
-  list = async (req, res) => {
-    const books = await this.#useCases.getBooks(req.query);
-    res.json(books);
-  };
-
-  get = async (req, res) => {
-    const book = await this.#useCases.getBookById(Number(req.params.id));
-    if (!book) throw new AppError("BOOK_NOT_FOUND", "No existe un libro con ese id", 404);
-    res.json(book);
-  };
-
-  create = async (req, res) => {
-    const book = await this.#useCases.createBook(req.body);
-    res.status(201).json(book);
-  };
-
-  update = async (req, res) => {
-    const book = await this.#useCases.updateBook(Number(req.params.id), req.body);
-    if (!book) throw new AppError("BOOK_NOT_FOUND", "No existe un libro con ese id", 404);
-    res.json(book);
-  };
-
-  remove = async (req, res) => {
-    const deleted = await this.#useCases.deleteBook(Number(req.params.id));
-    if (!deleted) throw new AppError("BOOK_NOT_FOUND", "No existe un libro con ese id", 404);
-    res.status(204).send();
-  };
-}
-
-export default BooksController;
+const app = express();
+const router = await buildContainer();
+app.use(router);
+app.listen(8000);
 ```
-
-### Notá la diferencia fundamental:
-
-1. **El controlador ya no importa ningún DAO.**
-2. **El controlador no pasa `dao` en ninguna llamada.**
-3. El controlador solo conoce a los casos de uso (`this.#useCases`).
-4. La firma de los casos de uso leídos desde el controlador es pura: `createBook(data)`, `getBookById(id)`.
-
----
-
-## 7. La antesala a la Clase 9: Persistencia Intercambiable
-
-En la Clase 9 integraremos **Sequelize (SQL)** como segundo adaptador de base de datos. Gracias al trabajo realizado hoy con las factories y la inyección de dependencias, cambiar de base de datos en toda la aplicación requerirá modificar **únicamente 2 líneas en el arranque (`index.js`)**:
-
-```js
-// index.js (Vista previa de la Clase 9)
-import booksMemoryDao from "./dao/booksMemoryDao.js";
-import booksSqlDao from "./dao/booksSqlDao.js"; // Nuevo adaptador Sequelize
-import makeBookUseCases from "./usecases/books/makeBookUseCases.js";
-
-// Selección dinámica del adaptador según variable de entorno
-const dao = process.env.PERSISTENCE === "sql" ? booksSqlDao : booksMemoryDao;
-
-// La factory empaqueta el DAO seleccionado
-const bookUseCases = makeBookUseCases(dao);
-
-// El controlador recibe los casos de uso sin enterarse de qué BD se está usando
-const booksController = new BooksController(bookUseCases);
-```
-
-**Resultado:** Se cambia de un array en memoria a una base de datos MySQL/PostgreSQL **sin tocar ni una sola línea de código en los controladores ni en los casos de uso.**
-
----
-
-## 8. Aclaraciones frecuentes
-
-### ¿Por qué no usamos un contenedor IoC como NestJS o TSyringe?
-
-En frameworks grandes de TypeScript como NestJS, se usan decoradores (`@Injectable()`, `@Inject()`) para que el framework inyecte las dependencias de manera automática.
-
-En este curso utilizamos **Node.js idiómático puro (sin librerías adicionales)** para comprender la mecánica real de la Inyección de Dependencias. Entender cómo funcionan las Factories y la Inyección Manual garantiza que puedas trabajar en cualquier proyecto JavaScript o TypeScript, con o sin frameworks.
 
 ---
 
 ## Cierre
 
-Hoy dimos un salto de calidad decisivo en la arquitectura:
+Lo que logramos hoy es el corazón de la Arquitectura Limpia: la infraestructura (Base de datos, Framework, Router) actúa como un simple plugin externo alrededor de nuestras reglas de negocio. Intercambiamos Memory por SQL simplemente cambiando la variable `PERSISTENCE_TYPE` en nuestro `.env`.
 
-1. Entendimos la responsabilidad del patrón DAO/Repository.
-2. Eliminamos la repetición de pasar dependencias manualmente en cada llamada usando una **Factory de Casos de Uso**.
-3. Logramos que el controlador esté totalmente desacoplado de la infraestructura.
-
-En la **consigna práctica de la Clase 8**, crearemos la factory `makeBookUseCases.js`, actualizaremos el controlador y ensamblaremos el proyecto en el arranque.
+**En la consigna práctica, pondremos todo esto a prueba creando nosotros mismos la nueva entidad de `Usuarios` de inicio a fin.**

@@ -13,6 +13,9 @@ import makeBookUseCases from "./usecases/books/makeBookUseCases.js";
 import BooksController from "./controllers/booksController.js";
 import createRouter from "./routes/index.js";
 
+import sequelize from "./connection/sequelize.js";
+import User from "./dao/Model/User.js"
+
 const app = express();
 
 // -----------------------------------------------------------------------------
@@ -29,6 +32,8 @@ const router = createRouter(booksController);
 // Middlewares globales
 app.use(logger);
 app.use(express.json());
+
+sequelize.sync({ alter: true });
 
 // Router centralizado de la aplicación
 app.use(router);

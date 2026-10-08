@@ -1,114 +1,52 @@
-# Clase 8 — Consigna de práctica
+# Clase 9 — Consigna de Práctica (Tarea Integradora)
 
-En esta clase llevamos la arquitectura un paso más lejos: eliminamos la necesidad de pasar el `dao` en cada llamada a los casos de uso creando una **Factory de Casos de Uso**. Al terminar, el controlador no importará ningún DAO ni se preocupará por dependencias de almacenamiento.
+En esta clase has visto cómo migrar la entidad `Libros` (`Books`) hacia un modelo ORM (Sequelize con SQLite) soportando persistencia intercambiable mediante la variable `PERSISTENCE_TYPE` en `.env`. Además, limpiamos nuestro `index.js` trasladando el ensamblado de dependencias a un **Contenedor IoC (`container/container.js`)**.
 
----
-
-## Ejercicio 1 — Factory de Casos de Uso
-
-Crear el archivo `usecases/books/makeBookUseCases.js`.
-
-Debe exportar por defecto una función `makeBookUseCases(dao)` que reciba el adaptador DAO y devuelva un objeto con los 5 casos de uso ya "preconectados" o con el `dao` inyectado:
-
-```js
-import getBooks from "./getBooks.js";
-import getBookById from "./getBookById.js";
-import createBook from "./createBook.js";
-import updateBook from "./updateBook.js";
-import deleteBook from "./deleteBook.js";
-
-function makeBookUseCases(dao) {
-  return {
-    getBooks: (filters) => getBooks(filters, dao),
-    getBookById: (id) => getBookById(id, dao),
-    createBook: (data) => createBook(data, dao),
-    updateBook: (id, changes) => updateBook(id, changes, dao),
-    deleteBook: (id) => deleteBook(id, dao),
-  };
-}
-
-export default makeBookUseCases;
-```
+El objetivo de esta consigna es que pongas todo en práctica construyendo una nueva entidad desde cero y aplicándole las mismas reglas de arquitectura y relaciones relacionales.
 
 ---
 
-## Ejercicio 2 — Refactorizar el Controller
+## Tarea Integrada: Construcción de la Entidad `Usuarios` (`Users`)
 
-Modificar `controllers/booksController.js`:
+Deberás implementar un CRUD completo para gestionar usuarios, estableciendo la relación de que un Libro pertenece a un Usuario (ya definida en `dao/models/index.js`), siguiendo estrictamente la Arquitectura en Capas.
 
-1. Eliminar cualquier `import` que haga referencia a `booksMemoryDao.js` o a casos de uso individuales.
-2. Hacer que la clase `BooksController` reciba en su constructor el objeto `useCases` producido por la Factory.
-3. Actualizar los métodos del controlador para que llamen a `this.#useCases.getBooks(req.query)`, `this.#useCases.createBook(req.body)`, etc., **sin pasar el DAO como argumento**.
-4. Cambiar el `export` final: en la clase 7 el archivo exportaba una instancia ya armada (`export default new BooksController(dao)`), porque el propio archivo conocía el DAO. Ahora que el controller no conoce ninguna dependencia concreta, exportá la **clase** (`export default BooksController;`). Quien la instancia (con los casos de uso ya inyectados) es el Composition Root, no el archivo del controller.
+Sigue estos pasos en orden:
 
----
+### Ejercicio 1: Validaciones (Schemas Zod)
+1. Crea el archivo `schemas/userSchema.js`.
+2. Define `createUserSchema` requiriendo:
+   - `nombre` (string, mínimo 2 caracteres)
+   - `email` (string, validación de email válida)
+   - `rol` (string, opcional, por defecto 'lector'. Podría ser un enum o validar strings específicos si te animas).
+3. Define `updateUserSchema` (todos los campos opcionales) y `userIdParamSchema`.
 
-## Ejercicio 3 — Ensamblado en el Composition Root (`index.js`)
+### Ejercicio 2: Capa de Persistencia (DAO)
+1. Revisa el modelo Sequelize ya provisto en `dao/models/UserModel.js` y cómo se asocia en `dao/models/index.js`.
+2. Crea `dao/UsersMemoryDao.js` (un array JS para persistencia en memoria, similar a Libros).
+3. Crea `dao/UsersSequelizeDao.js` utilizando `UserModel` (métodos: `getAll`, `getById`, `save`, `update`, `delete`). **No olvides incluir el método `init()`** (aunque SQLite ya se sincronice por Libros, es buena práctica si quisieras poblar datos iniciales).
+4. Actualiza o crea un archivo equivalente a `daoFactory.js` (ej. `getUsersDao`) para que retorne el DAO en memoria o SQL dependiendo de `PERSISTENCE_TYPE`.
 
-Como vimos en el teórico (sección 5), el **Composition Root es el único lugar de la aplicación donde se instancian y conectan los componentes concretos** — y ese lugar es `index.js`, no `routes/`. Ni `routes/booksRoutes.js` ni `controllers/booksController.js` deben importar el DAO.
+### Ejercicio 3: Capa de Dominio (Casos de Uso)
+1. Crea la carpeta `usecases/users/`.
+2. Implementa los archivos: `getUsers.js`, `getUserById.js`, `createUser.js`, `updateUser.js`, `deleteUser.js`.
+3. Valida en `createUser` que no exista ya un usuario con ese `email` (lanzando AppError "EMAIL_DUPLICATED").
+4. Implementa la factory `usecases/users/makeUserUseCases.js` (idéntica en estructura a la de libros).
 
-1. En `index.js`, importar el DAO (`booksMemoryDao.js`), la Factory (`makeBookUseCases.js`) y la clase `BooksController`.
-2. Instanciar los casos de uso: `const bookUseCases = makeBookUseCases(dao);`
-3. Instanciar el controlador pasándole los casos de uso: `const booksController = new BooksController(bookUseCases);`
-4. Convertir `routes/booksRoutes.js` en una función que recibe el controlador ya armado y devuelve el router, en vez de importar un controlador singleton:
+### Ejercicio 4: Capa HTTP (Controllers y Routes)
+1. Crea `controllers/usersController.js` para exponer los métodos manejando `req` y `res`.
+2. Crea `routes/usersRoutes.js` e implementa la factory `createUsersRouter(controller)` asegurándote de usar los middlewares `validate` creados en el Ejercicio 1.
 
-   ```js
-   // routes/booksRoutes.js
-   import express from "express";
-   import validate from "../middlewares/validate.js";
-   import { createBookSchema, updateBookSchema } from "../schemas/bookSchema.js";
+### Ejercicio 5: Inyección en el Contenedor
+Ve al archivo `container/container.js`.
+1. Instancia el DAO de Usuarios (`getUsersDao()`).
+2. Crea sus Casos de Uso pasándole el DAO.
+3. Instancia su Controlador pasándole los Casos de Uso.
+4. Monta su Router en Express: `router.use("/users", createUsersRouter(usersController));`.
 
-   function createBooksRouter(controller) {
-     const router = express.Router();
+### Ejercicio 6: Verificación Funcional
+1. Crea o actualiza un bloque en `requests.http` con peticiones de prueba para `/users` (GET, POST, PUT, DELETE).
+2. Arranca la aplicación con `PERSISTENCE_TYPE=memory` y pruébalo.
+3. Arranca la aplicación con `PERSISTENCE_TYPE=sequelize` y pruébalo.
+4. (Opcional Avanzado) Modifica el caso de uso `getBooks` en Sequelize para incluir al usuario propietario en los resultados utilizando la opción `include` de Sequelize.
 
-     router.get("/", controller.list);
-     router.get("/:id", controller.get);
-     router.post("/", validate(createBookSchema), controller.create);
-     router.put("/:id", validate(updateBookSchema), controller.update);
-     router.delete("/:id", controller.remove);
-
-     return router;
-   }
-
-   export default createBooksRouter;
-   ```
-5. Actualizar `routes/index.js` para que reciba el controlador desde afuera y se lo pase a `createBooksRouter`:
-
-   ```js
-   // routes/index.js
-   import { Router } from "express";
-   import createBooksRouter from "./booksRoutes.js";
-
-   function createRouter(booksController) {
-     const router = Router();
-     router.use("/books", createBooksRouter(booksController));
-     return router;
-   }
-
-   export default createRouter;
-   ```
-6. En `index.js`, pasar el `booksController` ya armado a `createRouter(booksController)` y montar el resultado con `app.use(...)`, tal como muestra el diagrama de la sección 5 del teórico.
-
----
-
-## Ejercicio 4 — Verificación
-
-Ejecutar las pruebas en `requests.http`:
-
-1. `GET /books`
-2. `GET /books/1`
-3. `POST /books` con body incompleto (400)
-4. `POST /books` válido (201)
-5. `POST /books` duplicado (409)
-6. `PUT /books/1` parcial (200)
-7. `PUT /books/1` con stock negativo (400)
-8. `DELETE /books/1` (204)
-
-**Criterio de éxito:** Todas las peticiones deben responder exactamente igual que en la Clase 7. El comportamiento externo es idéntico, pero el controlador ahora está 100% desacoplado de la infraestructura.
-
----
-
-## Desafío opcional
-
-1. **Decorador de Logger en Factory**: En `makeBookUseCases.js`, agregar un `console.log` dentro de cada función que indique qué caso de uso se está ejecutando (ejemplo: `console.log("[UseCase] Executing createBook...")`). Probar realizar peticiones HTTP y observar el log en consola.
-2. **DAO Falso Intercambiable**: En `index.js`, crear un DAO falso provisional y pasárselo a la factory en lugar de `booksMemoryDao`. Verificar que la aplicación arranca e interactúa con el nuevo adaptador sin tocar controladores.
+¡Éxitos! Esta es la culminación arquitectónica del backend antes de pasar a Seguridad (JWT) en próximas clases.

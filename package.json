@@ -8,11 +8,21 @@
     "start": "node --env-file=.env index.js",
     "dev": "node --env-file=.env --watch index.js"
   },
-  "keywords": ["express", "rest-api", "node", "zod", "dao", "layers", "classes"],
+  "keywords": [
+    "express",
+    "rest-api",
+    "node",
+    "zod",
+    "dao",
+    "layers",
+    "classes"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
     "express": "^5.2.1",
+    "sequelize": "^6.37.8",
+    "sqlite3": "^6.0.1",
     "zod": "^4.5.4"
   }
 }
