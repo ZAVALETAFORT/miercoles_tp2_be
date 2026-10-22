@@ -7,5 +7,8 @@ const PORT = Number(process.env.PORT) || 8000;
 const NODE_ENV = process.env.NODE_ENV || "development";
 const PERSISTENCE_TYPE = process.env.PERSISTENCE_TYPE || "memory"; // "memory" o "sequelize"
 
-export { PORT, NODE_ENV, PERSISTENCE_TYPE };
+const LOW_STOCK_THRESHOLD = Number(process.env.LOW_STOCK_THRESHOLD ?? 2);
+
+export { PORT, NODE_ENV, PERSISTENCE_TYPE, LOW_STOCK_THRESHOLD };
+
 
